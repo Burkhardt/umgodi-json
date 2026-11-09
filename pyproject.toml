@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "umgodi-json"
+version = "0.1.0"
+description = "Distributed, cloud-drive-backed JSON persistence for Python with immutable history and multi-process synchronization."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [
+	{ name = "Dr. Rainer Burkhardt" },
+]
+classifiers = [
+	"Development Status :: 5 - Production/Stable",
+	"Intended Audience :: Developers",
+	"Operating System :: OS Independent",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3.12",
+	"Programming Language :: Python :: 3.13",
+	"Topic :: Database :: Database Engines/Servers",
+	"Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = ["inqaba>=0.1.0"]
+
+[project.scripts]
+jpit = "umgodi.cli:main"
+umgodi = "umgodi.cli:main"
+
+[project.optional-dependencies]
+dev = [
+	"pytest>=8.0",
+	"pytest-cov>=5.0",
+	"mypy>=1.10",
+	"ruff>=0.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["umgodi"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+	"umgodi",
+	"README.md",
+	"API.md",
+	"pyproject.toml",
+	"assets",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --strict-markers"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "RUF"]
+
+[tool.ruff.format]
+indent-style = "tab"
+quote-style = "double"

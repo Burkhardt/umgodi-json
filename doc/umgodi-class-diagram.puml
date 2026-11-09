@@ -1,0 +1,28 @@
+@startuml
+skinparam classAttributeIconSize 0
+
+package umgodi {
+  class Pit
+  class PitStore
+  class PitItem
+  class PitItems
+  class PitAudit
+  class OsConfig
+}
+
+package inqaba {
+  class InqPath
+  class InqRelPath
+  class InqFile
+  class InqJsonFile
+}
+
+Pit --> PitStore
+Pit o-- PitItem
+Pit --> PitItems
+Pit --> OsConfig
+Pit --> InqPath : storage root
+PitStore --> InqFile : persistence
+PitStore --> InqJsonFile : snapshots
+PitAudit --> InqPath
+@enduml
