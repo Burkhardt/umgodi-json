@@ -9,17 +9,15 @@ from __future__ import annotations
 
 import datetime
 import json
-from pathlib import Path
+from inqaba import InqEntry
 from typing import Any
 
 from .canonical import (
-	canonical_json,
 	canonical_with_hash,
 	datetime_to_utc_ticks,
 	format_iso_timestamp,
 	parse_iso_timestamp,
 	sha256_hex,
-	utc_ticks_to_datetime,
 	utcnow,
 )
 from .fs import safe_delete_file, safe_read_text, safe_write_in_place
@@ -117,7 +115,7 @@ class ChangeFile:
 		return None
 
 	@classmethod
-	def read_validated(cls, file_path: Path) -> list[list[dict[str, Any]]] | None:
+	def read_validated(cls, file_path: InqEntry) -> list[list[dict[str, Any]]] | None:
 		"""
 		Reads and validates a change file.
 		For files with embedded checksum (4-char or 64-char), verifies content matches prefix.
@@ -147,10 +145,10 @@ class ChangeFile:
 	@classmethod
 	def create(
 		cls,
-		pit_dir: Path,
+		pit_dir: InqEntry,
 		fragment: PitItem,
 		exact_process_identity: str,
-	) -> Path:
+	) -> InqEntry:
 		"""
 		Writes a fragment as an ordinary collision-safe clean change file with 4-char checksum.
 		Filename: {Modified.UtcTicks}_{ExactProcessIdentity}_{Sha4}.json.
@@ -178,7 +176,7 @@ class ReceiptFile:
 
 	CLEANUP_GRACE: datetime.timedelta = datetime.timedelta(minutes=10)
 
-	def __init__(self, change_file_path: Path) -> None:
+	def __init__(self, change_file_path: InqEntry) -> None:
 		self.change_file_path = change_file_path
 		self.path = change_file_path.with_suffix(".receipt")
 
@@ -203,6 +201,6 @@ class ReceiptFile:
 		return safe_delete_file(self.path)
 
 	@classmethod
-	def path_for(cls, change_file_path: Path) -> Path:
+	def path_for(cls, change_file_path: InqEntry) -> InqEntry:
 		"""Returns the path of the sibling receipt file."""
 		return change_file_path.with_suffix(".receipt")

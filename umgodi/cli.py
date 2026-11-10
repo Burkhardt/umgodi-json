@@ -12,21 +12,20 @@ import datetime
 import json
 import os
 import platform
-from pathlib import Path
+from inqaba import InqEntry, InqPath, InqRelPath, InqFile
 import re
 import shutil
 import subprocess
 import sys
 from typing import Any
 
-from .audit import LogLevel, PitAudit, PitAuditEvent, PitAuditReadResult
-from .canonical import canonical_json, format_iso_timestamp, parse_iso_timestamp, utcnow
-from .config import OsConfig, loads_json5, missing_configuration_diagnostic
+from .audit import LogLevel, PitAudit, PitAuditEvent
+from .canonical import format_iso_timestamp, parse_iso_timestamp, utcnow
+from .config import InqConfig, loads_json5, missing_configuration_diagnostic
 from .exceptions import (
 	JsonPitError,
 	PitNotFoundError,
 	ProtectedAttributeError,
-	StrictPatchValidationError,
 )
 from .fs import is_explicit_path, resolve_command_pit_root, resolve_pit_target
 from .icons import Icons
@@ -44,7 +43,7 @@ from . import __version__
 def run_jq_filter(json_text: str, jq_filter: str) -> None:
 	"""Pipes json_text through the system jq executable."""
 	jq_bin = shutil.which("jq") or "/usr/bin/jq"
-	if not os.path.isfile(jq_bin):
+	if not InqFile(jq_bin).is_file():
 		sys.stderr.write("[jpit] Error: 'jq' executable not found on system PATH.\n")
 		sys.stdout.write(json_text)
 		return
@@ -63,15 +62,15 @@ def discover_pits(
 	target: str,
 	cloud: str | None = None,
 	root: str | None = None,
-) -> list[tuple[Path, str]]:
+) -> list[tuple[InqEntry, str]]:
 	"""
 	Discovers one or multiple pits based on a target name or root.
 	If target is an entire root (e.g. 'AIA'), discovers all contained pits.
 	"""
 	# Check if target is current directory or default
 	if target in (".", ""):
-		cwd = resolve_command_pit_root(root=root, cloud=cloud, operation="grep") if root or cloud else Path.cwd()
-		discovered_cwd: list[tuple[Path, str]] = []
+		cwd = resolve_command_pit_root(root=root, cloud=cloud, operation="grep") if root or cloud else InqEntry.cwd()
+		discovered_cwd: list[tuple[InqEntry, str]] = []
 		for child in sorted(cwd.iterdir()):
 			if child.is_dir():
 				pit_file = child / f"{child.name}.pit"
@@ -88,7 +87,7 @@ def discover_pits(
 		raw_str.startswith(("/", "~", ".", "\\"))
 		or ("/" in raw_str and not raw_str.startswith("-"))
 		or ("\\" in raw_str)
-		or Path(raw_str).exists()
+		or InqEntry(raw_str).exists()
 	)
 	if is_explicit_path:
 		try:
@@ -97,9 +96,9 @@ def discover_pits(
 				return [(p_dir, p_name)]
 		except Exception:
 			pass
-		if Path(target).is_dir():
+		if InqEntry(target).is_dir():
 			discovered = []
-			for child in sorted(Path(target).iterdir()):
+			for child in sorted(InqEntry(target).iterdir()):
 				if child.is_dir():
 					pit_file = child / f"{child.name}.pit"
 					if pit_file.is_file():
@@ -108,16 +107,16 @@ def discover_pits(
 				return discovered
 
 	# Target requires cloud resolution
-	cfg = OsConfig.load()
+	cfg = InqConfig.load()
 	if not cfg.is_config_loaded and not is_explicit_path:
 		raise PitNotFoundError(missing_configuration_diagnostic())
 
 	cloud_root = cfg.get_cloud_root(cloud)
-	candidates: list[Path] = []
-	if cloud_root and (cloud_root / target).is_dir():
-		candidates.append(cloud_root / target)
+	candidates: list[InqEntry] = []
+	if cloud_root and not is_explicit_path and (cloud_root / InqRelPath(target)).is_dir():
+		candidates.append(cloud_root / InqRelPath(target))
 
-	discovered: list[tuple[Path, str]] = []
+	discovered: list[tuple[InqEntry, str]] = []
 	for candidate_root in candidates:
 		for child in sorted(candidate_root.iterdir()):
 			if child.is_dir():
@@ -182,11 +181,11 @@ def cmd_grep(args: argparse.Namespace) -> int:
 
 	# Smart swap if user passed target first and pattern second:
 	if (
-		Path(pattern_raw).exists()
+		InqEntry(pattern_raw).exists()
 		or pattern_raw.endswith(".pit")
 		or ("/" in pattern_raw and not pattern_raw.startswith("-"))
 		or ("\\" in pattern_raw)
-	) and not Path(target_raw).exists() and target_raw != ".":
+	) and not InqEntry(target_raw).exists() and target_raw != ".":
 		pattern_raw, target_raw = target_raw, pattern_raw
 
 	at_time: datetime.datetime | None = None
@@ -328,7 +327,7 @@ def cmd_history(args: argparse.Namespace) -> int:
 	return 0
 
 
-def _discover_pit_names(directory: Path) -> list[str]:
+def _discover_pit_names(directory: InqEntry) -> list[str]:
 	if not directory.is_dir():
 		return []
 	return sorted({
@@ -340,7 +339,7 @@ def _discover_pit_names(directory: Path) -> list[str]:
 	})
 
 
-def _format_pit_listing(directory: Path, name: str, long_listing: bool) -> str:
+def _format_pit_listing(directory: InqEntry, name: str, long_listing: bool) -> str:
 	if not long_listing:
 		return f"  {name}"
 	nested = directory / name / f"{name}.pit"
@@ -351,7 +350,7 @@ def _format_pit_listing(directory: Path, name: str, long_listing: bool) -> str:
 	return f"  {name:<12}  {size:>9}   {modified}"
 
 
-def _format_discovery_directory(directory: Path) -> str:
+def _format_discovery_directory(directory: InqEntry) -> str:
 	"""Matches pits' RaiPath display form, including its terminal separator."""
 	text = str(directory)
 	return text if text.endswith(os.sep) else text + os.sep
@@ -359,7 +358,7 @@ def _format_discovery_directory(directory: Path) -> str:
 
 def _render_discovery(
 	provider: str | None,
-	directory: Path,
+	directory: InqEntry,
 	pits: list[str],
 	all_clouds: bool,
 	long_listing: bool = False,
@@ -374,16 +373,16 @@ def _render_discovery(
 	return "\n".join([heading, *[_format_pit_listing(directory, name, long_listing) for name in pits]])
 
 
-def _discover_tenant_roots(root: str, cloud: str | None, all_clouds: bool) -> list[tuple[str | None, Path, list[str]]]:
+def _discover_tenant_roots(root: str, cloud: str | None, all_clouds: bool) -> list[tuple[str | None, InqEntry, list[str]]]:
 	"""Discovers a local root or configured cloud tenant roots without guessing a provider."""
 	if cloud:
 		candidate = resolve_command_pit_root(root=root, cloud=cloud, target_name=root, operation="list")
 		return [(cloud, candidate, _discover_pit_names(candidate))]
 	if is_explicit_path(root):
-		candidate = Path(os.path.abspath(os.path.expanduser(root)))
+		candidate = InqPath.from_directory(root)
 		return [(None, candidate, _discover_pit_names(candidate))]
 
-	cfg = OsConfig.load()
+	cfg = InqConfig.load()
 	if not cfg.is_config_loaded:
 		raise PitNotFoundError(missing_configuration_diagnostic())
 	providers = [provider for provider in cfg.default_cloud_order if cfg.get_cloud_root(provider) is not None]
@@ -504,7 +503,7 @@ def cmd_put(args: argparse.Namespace) -> int:
 	# Read source content
 	content = ""
 	if source_path_str != "-":
-		path = Path(source_path_str)
+		path = InqEntry(source_path_str)
 		if not path.is_file():
 			sys.stderr.write(f"[jpit] Source file not found: {path}\n")
 			return 1
@@ -743,13 +742,13 @@ def cmd_export(args: argparse.Namespace) -> int:
 		data = {"_export": {"at": format_iso_timestamp(at_time), "exported": format_iso_timestamp(utcnow())}, "data": data}
 	raw_json = json.dumps(data, indent=2, ensure_ascii=False)
 	if out_dir:
-		directory = Path(out_dir).expanduser()
+		directory = InqEntry(out_dir).expanduser()
 		directory.mkdir(parents=True, exist_ok=True)
 		destination = directory / f"{export_name}.json"
 		destination.write_text(raw_json, encoding="utf-8")
 		print(f"[jpit] Exported {export_name} to {destination}")
 	elif legacy_file:
-		destination = Path(legacy_file).expanduser()
+		destination = InqEntry(legacy_file).expanduser()
 		destination.write_text(raw_json, encoding="utf-8")
 		print(f"[jpit] Exported {export_name} to {destination}")
 	elif args.jq:
@@ -769,7 +768,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 		unflagged=True,
 	) as pit:
 		print(f"\033[1m=== Pit Status: {pit.pit_name} ===\033[0m")
-		print(f"Path: {pit.pit_dir}")
+		print(f"InqEntry: {pit.pit_dir}")
 		print(f"Canonical file: {pit.canonical_file.name} (exists={pit.canonical_file.is_file()})")
 		print(f"Active entities: {len(pit)}")
 
@@ -979,7 +978,7 @@ def cmd_maintain(args: argparse.Namespace) -> int:
 	cloud = getattr(args, "cloud", "OneDrive")
 	root = getattr(args, "root", None)
 
-	targets: list[tuple[Path, Path, str]] = []
+	targets: list[tuple[InqEntry, InqEntry, str]] = []
 
 	if wwwa:
 		try:
@@ -1085,7 +1084,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
 	cloud = getattr(args, "cloud", "OneDrive")
 	root = getattr(args, "root", None)
 
-	directories: list[Path] = []
+	directories: list[InqEntry] = []
 
 	if wwwa:
 		try:
@@ -1144,7 +1143,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
 def _help_cloud_providers() -> list[str]:
 	try:
-		cfg = OsConfig.load()
+		cfg = InqConfig.load()
 		return [name for name in cfg.default_cloud_order if name in cfg.clouds]
 	except Exception:
 		return ["OneDrive", "Dropbox", "GoogleDrive", "ICloudDrive"]
@@ -1228,7 +1227,7 @@ def print_top_help(
 		print(line)
 
 
-def _wwwa_roots(root: str | None, cloud: str | None) -> list[Path]:
+def _wwwa_roots(root: str | None, cloud: str | None) -> list[InqEntry]:
 	"""Returns resolved help roots without making a cloud selection implicit."""
 	if not root:
 		return []
@@ -1495,7 +1494,7 @@ def print_retain_window_help(nologo: bool = False, use_color: bool = True) -> No
 	)
 
 	sys.stdout.write(f"{color('Specification & Documentation:', C_BOLD + C_GREEN, use_color)}\n")
-	pkg_dir = Path(__file__).resolve().parent
+	pkg_dir = InqEntry(__file__).resolve().parent
 	doc_cr_file = pkg_dir.parent / "doc" / "CR" / "CR024_AIA_to_RAIkeep_Ephemeral_Flag_Self_Cleanup.md"
 	if doc_cr_file.is_file():
 		abs_uri = f"file://{doc_cr_file.as_posix()}#L45"
@@ -1529,7 +1528,7 @@ def get_cli_prog_name(argv0: str | None = None) -> str:
 	"""Determines whether CLI is invoked as 'umgodi' or 'jpit'."""
 	if argv0 is None:
 		argv0 = sys.argv[0] if sys.argv and sys.argv[0] else "jpit"
-	base = Path(argv0).name.lower()
+	base = InqEntry(argv0).name.lower()
 	if base == "umgodi" or base.startswith("umgodi"):
 		return "umgodi"
 	if "umgodi" in str(argv0).lower() and "jpit" not in base:

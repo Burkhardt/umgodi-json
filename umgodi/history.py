@@ -13,8 +13,6 @@ from typing import Any
 from .canonical import (
 	canonical_json,
 	datetime_to_utc_ticks,
-	parse_iso_timestamp,
-	utcnow,
 )
 from .item import PitItem
 

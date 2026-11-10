@@ -10,11 +10,11 @@ from dataclasses import dataclass, field
 import datetime
 from enum import IntEnum
 import json
-from pathlib import Path
+from inqaba import InqEntry, InqPath
 from typing import Any
 import zipfile
 
-from .canonical import format_iso_timestamp, parse_iso_timestamp, utc_ticks_to_datetime
+from .canonical import parse_iso_timestamp, utc_ticks_to_datetime
 from .flags import get_machine_name
 from .fs import safe_read_text
 
@@ -120,11 +120,11 @@ class PitAudit:
 
 	@staticmethod
 	def inspect(
-		pit_directory: Path | str,
+		pit_directory: InqEntry | str,
 		machine_filter: str = "all",
 		min_level: LogLevel = LogLevel.TRACE,
 	) -> PitAuditReadResult:
-		p_dir = Path(pit_directory)
+		p_dir = InqPath.from_directory(pit_directory)
 		events_dir = p_dir / "Events"
 		issues: list[str] = []
 

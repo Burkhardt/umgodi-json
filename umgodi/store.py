@@ -13,23 +13,20 @@ import datetime
 import enum
 import hashlib
 import json
-import os
-from pathlib import Path
+from inqaba import InqEntry, InqPath
 import threading
 from typing import Any, ClassVar, Iterator, MutableMapping
 import weakref
 
 from .canonical import (
 	canonical_json,
-	format_iso_timestamp,
 	parse_iso_timestamp,
 	utcnow,
 )
 from .changes import ChangeFile, ReceiptFile
-from .config import OsConfig, loads_json5
+from .config import loads_json5
 from .exceptions import (
 	ObjectDisposedError,
-	PitConcurrencyError,
 	PitCorruptError,
 	PitInstanceConflictError,
 	PitNotFoundError,
@@ -237,7 +234,7 @@ class JsonPitBase:
 
 	def __init__(
 		self,
-		pit_dir: Path,
+		pit_dir: InqEntry,
 		pit_name: str,
 		subscriber: str | None = None,
 		read_only: bool = False,
@@ -245,7 +242,7 @@ class JsonPitBase:
 		unflagged: bool = False,
 		retain_window: bool = False,
 	) -> None:
-		self.pit_dir = Path(pit_dir)
+		self.pit_dir = InqPath.from_directory(pit_dir)
 		self.pit_name = pit_name
 		self.canonical_file = self.pit_dir / f"{pit_name}.pit"
 		self.subscriber = subscriber
@@ -452,7 +449,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 
 	def __init__(
 		self,
-		pit_dir: Path,
+		pit_dir: InqEntry,
 		pit_name: str,
 		subscriber: str | None = None,
 		read_only: bool = False,
@@ -654,7 +651,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 			with slot.gate:
 				self._publish_live_state(slot, item_id, self._historic_items.get(item_id))
 
-	# --- Path Ownership Registry (CR003 §4) ---
+	# --- InqEntry Ownership Registry (CR003 §4) ---
 
 	def _register_path_ownership(self) -> None:
 		canonical_key = str(self.canonical_file.resolve())
@@ -730,7 +727,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 	@classmethod
 	def open(
 		cls,
-		name_or_path: str | Path,
+		name_or_path: str | InqEntry,
 		cloud: str | None = "OneDrive",
 		root: str | None = None,
 		subscriber: str | None = None,
@@ -819,14 +816,14 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 				raise
 			raise PitCorruptError(f"Failed to parse pit file {self.canonical_file}: {ex}") from ex
 
-	def seed_from_file(self, file_path: Path | str, require_existing: bool = False) -> int:
+	def seed_from_file(self, file_path: InqEntry | str, require_existing: bool = False) -> int:
 		"""
 		Ingests a seed file (JSON or JSON5) and adds all entities to the pit.
 		Returns count of imported entities.
 		CR043: Validates payload shape and entities strictly before mutation.
 		CR047: If require_existing is True, validates that all IDs exist in living state.
 		"""
-		path = Path(file_path)
+		path = InqEntry(file_path)
 		if not path.is_file():
 			raise PitNotFoundError(f"Seed file not found: {path}")
 
@@ -1083,7 +1080,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 			return 0
 
 		merged_count = 0
-		merged_entries: list[tuple[Path, list[list[dict[str, Any]]]]] = []
+		merged_entries: list[tuple[InqEntry, list[list[dict[str, Any]]]]] = []
 
 		with self._locker:
 			for cf in sorted(change_files, key=lambda p: p.name, reverse=True):
@@ -1166,7 +1163,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 				reverse=True if options.apply else False,
 			)
 
-			merged_files: list[tuple[Path, list[Any]]] = []
+			merged_files: list[tuple[InqEntry, list[Any]]] = []
 			for cf in change_files:
 				result.change_files_observed += 1
 				try:
@@ -1401,14 +1398,14 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 
 	def export_json(
 		self,
-		export_path: Path | str,
+		export_path: InqEntry | str,
 		at: datetime.datetime | None = None,
 		pretty: bool = True,
-	) -> Path:
+	) -> InqEntry:
 		"""Exports undeleted entity projections to a JSON file."""
 		if at is None:
 			self.flush_live_items()
-		target = Path(export_path)
+		target = InqEntry(export_path)
 		ensure_directory(target.parent)
 
 		items = [

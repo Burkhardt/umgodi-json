@@ -1,28 +1,312 @@
 @startuml
 skinparam classAttributeIconSize 0
-
-package umgodi {
-  class Pit
-  class PitStore
-  class PitItem
-  class PitItems
-  class PitAudit
-  class OsConfig
+hide empty members
+left to right direction
+package "umgodi.audit" {
+class LogLevel {
+  + from_string(name)
+  + display_name()
 }
-
-package inqaba {
-  class InqPath
-  class InqRelPath
-  class InqFile
-  class InqJsonFile
+class PitAuditEvent {
+  file_name
+  content
+  machine
+  utc_time
+  level
+  stage
+  event_id
+  message
+  + from_dict(file_name, content)
 }
-
-Pit --> PitStore
-Pit o-- PitItem
-Pit --> PitItems
-Pit --> OsConfig
-Pit --> InqPath : storage root
-PitStore --> InqFile : persistence
-PitStore --> InqJsonFile : snapshots
-PitAudit --> InqPath
+class PitAuditReadResult {
+  events
+  issues
+  + succeeded()
+}
+class PitAudit {
+  + inspect(pit_directory, machine_filter, min_level)
+}
+}
+package "umgodi.changes" {
+class ChangeFile {
+  + canonical_payload_for(fragment)
+  + compose_name(modified, exact_process_identity, sha256)
+  + compose_name_for(fragment, exact_process_identity, include_sha)
+  + try_parse_name(name_without_extension)
+  + identity_of(name_without_extension)
+  + read_validated(file_path)
+  + create(pit_dir, fragment, exact_process_identity)
+}
+class ReceiptFile {
+  CLEANUP_GRACE
+  + __init__(change_file_path)
+  + is_eligible_for_cleanup()
+  + remove()
+  + path_for(change_file_path)
+}
+}
+package "umgodi.cli" {
+class JsonPitArgumentParser {
+  + error(message)
+}
+}
+package "umgodi.cli_style" {
+class Row {
+  label
+  icon
+  description
+  providers
+}
+}
+package "umgodi.exceptions" {
+class JsonPitError {
+}
+class PitNotFoundError {
+}
+class PitCorruptError {
+}
+class PitConcurrencyError {
+}
+class PitInstanceConflictError {
+}
+class TombstoneError {
+}
+class ProtectedAttributeError {
+}
+class StrictPatchValidationError {
+}
+class ObjectDisposedError {
+}
+}
+package "umgodi.flags" {
+class MasterFlagFile {
+  TICKET_DURATION
+  + __init__(pit_dir, name)
+  + read()
+  + originator()
+  + time()
+  + is_expired()
+  + is_owned_by_me()
+  + is_owned_by(claimant)
+  + try_claim(originator)
+  + update(time, originator)
+  + conflict_flags(pit_dir)
+}
+class ProcessFlagFile {
+  + __init__(pit_dir, subscriber)
+  + update(time, process)
+  + is_owned_by_current_process()
+  + try_release_current_process()
+  + is_process_window_active(pit_dir, exact_process_identity)
+  + process_window_time(pit_dir, exact_process_identity)
+}
+}
+package "umgodi.history" {
+class PitItems {
+  + __init__(key, history, max_count)
+  + key()
+  + history()
+  + max_count()
+  + create(key, max_count)
+  + push(item)
+  + latest_fragment()
+  + project_state(at, with_deleted)
+}
+}
+package "umgodi.icons" {
+class Icons {
+  ERROR
+  WARNING
+  SUCCESS
+  INFO
+  HELP
+  NOT_AVAILABLE
+  FILE
+  FOLDER
+  DOWNLOAD
+  UPLOAD
+  BANNER
+  NO_BANNER
+  DROPBOX
+  GOOGLE_DRIVE
+  ICLOUD_DRIVE
+  ONE_DRIVE
+  HELP_LINE_WIDTH_COMPENSATION
+  NUMBER_BOX_OUTLINES
+  + cloud_provider_icon(provider, fallback_number)
+  + letter_box_outline(char)
+}
+}
+package "umgodi.item" {
+class TimestampedValue {
+  + __init__(value_or_string, time)
+}
+class ObservableDict {
+  + __init__()
+  + pop(key)
+  + clear()
+  + update()
+}
+class ObservableList {
+  + __init__()
+  + append(value)
+  + extend(values)
+  + insert(index, value)
+  + pop()
+  + remove(value)
+  + clear()
+}
+class PitItem {
+  + __init__(initial)
+  + suppress_notifications()
+  + ensure_valid_for_live_add()
+  + bind(pit)
+  + pit()
+  + id()
+  + id(value)
+  + modified()
+  + modified(value)
+  + deleted()
+  + deleted(value)
+  + note()
+  + note(value)
+  + is_valid()
+  + validate()
+  + invalidate(modified)
+  + set_property(patch)
+  + validate_client_payload(payload)
+  + delete_property(property_name)
+  + delete_property_path(property_path)
+  + delete(by, backdate_100)
+  + extend_with(obj)
+  + extend(json_string)
+  + merge(patch)
+  + clone()
+  + to_dict()
+  + to_json(indent)
+}
+}
+package "umgodi.store" {
+class MutationTrackingMode {
+}
+class PitMeta {
+  _default_mutation_tracking_mode
+  + default_mutation_tracking_mode()
+  + default_mutation_tracking_mode(value)
+  + DefaultMutationTrackingMode()
+  + DefaultMutationTrackingMode(value)
+}
+class LiveSlot {
+  + __init__(id, current, baseline)
+}
+class TimeValue {
+  key
+  value
+  + Key()
+  + Value()
+}
+class JsonPitBase {
+  + __init__(pit_dir, pit_name, subscriber, read_only, backup, unflagged, retain_window)
+  + participant_identity()
+  + exact_process_identity()
+  + master_flag()
+  + process_flag()
+  + running_on_master()
+  + try_acquire_master()
+  + try_release_process_window()
+}
+class PitMaintenanceOptions {
+  apply
+  prune_process_flags
+  older_than
+  repair_legacy_extensions
+  archive_events
+}
+class PitMaintenanceResult {
+  pit_file
+  applied
+  master_flags_observed
+  conflict_flags_observed
+  process_flags_active
+  process_flags_expired
+  process_flags_pruned
+  process_flags_malformed
+  change_files_observed
+  change_files_invalid
+  change_files_valid
+  change_files_merged
+  change_files_eligible
+  change_files_removed
+  receipts_observed
+  receipts_created
+  receipts_retained
+  receipts_removed
+  receipts_malformed
+  legacy_artifacts_observed
+  legacy_artifacts_repaired
+  event_files_observed
+  event_files_archived
+  event_files_removed
+  event_archive_name
+  canonical_persisted
+  current_master
+  deferred
+  failures
+  + succeeded()
+  + to_dict()
+}
+class Pit {
+  _live_instances
+  _registry_lock
+  + __init__(pit_dir, pit_name, subscriber, read_only, backup, unflagged, retain_window, default_max_count, autoload, tracking_mode)
+  + tracking_mode()
+  + TrackingMode()
+  + historic_items()
+  + HistoricItems()
+  + flush_live_items()
+  + accept_live_changes(live)
+  + close(save_dirty)
+  + dispose()
+  + open(name_or_path, cloud, root, subscriber, read_only, backup, unflagged, retain_window, default_max_count, autoload, tracking_mode)
+  + load(undercover)
+  + seed_from_file(file_path, require_existing)
+  + add(item, refresh_modified)
+  + add_historical(item)
+  + delete_item(item_id, by, backdate_100)
+  + rename_id(old_key, new_key, by)
+  + has_dirty_items()
+  + invalid()
+  + save(force, pretty)
+  + merge_into_history(change_items)
+  + merge_changes()
+  + maintain(options)
+  + get(item_id, default)
+  + get_at(item_id, at, with_deleted)
+  + values_over_time(item_id, property_name)
+  + contains(item_id, with_deleted)
+  + all_undeleted()
+  + export_json(export_path, at, pretty)
+}
+}
+PitNotFoundError --|> JsonPitError
+PitCorruptError --|> JsonPitError
+PitConcurrencyError --|> JsonPitError
+PitInstanceConflictError --|> PitConcurrencyError
+TombstoneError --|> JsonPitError
+ProtectedAttributeError --|> JsonPitError
+StrictPatchValidationError --|> JsonPitError
+ObjectDisposedError --|> JsonPitError
+ProcessFlagFile --|> MasterFlagFile
+Pit --|> JsonPitBase
+Pit o-- PitItem : live slots
+Pit --> PitItems : history
+Pit --> ChangeFile
+Pit --> ReceiptFile
+JsonPitBase --> ProcessFlagFile
+JsonPitBase --> MasterFlagFile
+JsonPitBase --> "inqaba.InqConfig"
+JsonPitBase --> "inqaba.InqPath" : pit_dir
+ChangeFile --> "inqaba.InqFile"
+PitAudit --> PitAuditReadResult
+PitAuditReadResult o-- PitAuditEvent
 @enduml

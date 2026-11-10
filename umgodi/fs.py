@@ -7,28 +7,26 @@ within the same cloud folder, never crossing filesystem volume boundaries.
 from __future__ import annotations
 
 import os
-import shutil
-from pathlib import Path
-from typing import Any
+from inqaba import InqEntry, InqPath, InqRelPath, InqFile, InqTextFile
 
-from .config import DEFAULT_CONFIG_FILE_LOCATION, OsConfig, missing_configuration_diagnostic
+from .config import DEFAULT_CONFIG_FILE_LOCATION, InqConfig, missing_configuration_diagnostic
 from .exceptions import PitNotFoundError
 
 
-def is_explicit_path(value: str | Path) -> bool:
+def is_explicit_path(value: str | InqEntry) -> bool:
 	"""Distinguishes path syntax from bare tenant names, regardless of local existence."""
 	raw = str(value).strip()
-	return isinstance(value, Path) or raw.startswith(("/", "~", ".", "\\")) or "/" in raw or "\\" in raw
+	return isinstance(value, os.PathLike) or raw.startswith(("/", "~", ".", "\\")) or "/" in raw or "\\" in raw
 
 
 def resolve_pit_target(
-	name_or_path: str | Path,
+	name_or_path: str | InqEntry,
 	cloud: str | None = None,
 	root: str | None = None,
-	config: OsConfig | None = None,
-) -> tuple[Path, str]:
+	config: InqConfig | None = None,
+) -> tuple[InqPath, str]:
 	"""
-	Resolves a pit target to its directory Path and canonical Pit name.
+	Resolves a pit target to its directory InqEntry and canonical Pit name.
 
 	Supported forms:
 	1. Cloud triad: Pit.open("Person", cloud="OneDrive", root="AfricaStage")
@@ -41,20 +39,20 @@ def resolve_pit_target(
 	raw_str = str(name_or_path).strip()
 
 	if is_explicit_path(name_or_path):
-		resolved = Path(os.path.abspath(os.path.expanduser(raw_str)))
+		resolved = InqEntry(raw_str).expanduser().absolute()
 		if resolved.suffix.lower() == ".pit":
 			pit_dir = resolved.parent
 			pit_name = resolved.stem
 		else:
-			pit_dir = resolved
+			pit_dir = InqPath.from_directory(resolved)
 			pit_name = resolved.name
 		return pit_dir, pit_name
 
 	# An explicit root remains local even without configured cloud providers.
 	if root and is_explicit_path(root):
-		return Path(os.path.abspath(os.path.expanduser(str(root)))) / raw_str, raw_str
+		return InqPath.from_directory(root) / InqRelPath(raw_str), raw_str
 
-	cfg = config or OsConfig.load()
+	cfg = config or InqConfig.load()
 
 	# CR044 §7.4: If attempting cloud triad resolution and no configuration file exists
 	if not cfg.is_config_loaded:
@@ -71,8 +69,8 @@ def resolve_pit_target(
 	pit_name = raw_str
 	target_dir = cloud_root
 	if root:
-		target_dir = target_dir / root
-	target_dir = target_dir / pit_name
+		target_dir = target_dir / InqRelPath(root)
+	target_dir = target_dir / InqRelPath(pit_name)
 
 	return target_dir, pit_name
 
@@ -82,21 +80,21 @@ def resolve_command_pit_root(
 	cloud: str | None = None,
 	target_name: str = "WWWA",
 	operation: str = "maintenance",
-	config: OsConfig | None = None,
-) -> Path:
+	config: InqConfig | None = None,
+) -> InqPath:
 	"""
 	Resolves a tenant pit root directory:
 	- If an explicit filesystem path is provided (e.g. starting with /, ~, .), resolves directly.
-	- If cloud is provided: resolves cloud root via OsConfig and appends relative root.
-	- A bare tenant name without cloud uses OsConfig's configured default cloud.
+	- If cloud is provided: resolves cloud root via InqConfig and appends relative root.
+	- A bare tenant name without cloud uses InqConfig's configured default cloud.
 	  Never falls back to a same-named local directory.
 	- If neither is provided: raises PitNotFoundError.
 	"""
 	raw_root = str(root).strip() if root else ""
 	if root and is_explicit_path(root):
-		return Path(os.path.abspath(os.path.expanduser(raw_root)))
+		return InqPath.from_directory(raw_root)
 
-	cfg = config or OsConfig.load()
+	cfg = config or InqConfig.load()
 	if cloud or raw_root:
 		if not cfg.is_config_loaded:
 			raise PitNotFoundError(missing_configuration_diagnostic())
@@ -105,25 +103,25 @@ def resolve_command_pit_root(
 			raise PitNotFoundError(
 				f"The requested cloud provider '{cloud or 'default'}' is missing or unavailable in {DEFAULT_CONFIG_FILE_LOCATION}."
 			)
-		return cloud_root / raw_root.strip("/\\") if raw_root else cloud_root
+		return cloud_root / InqRelPath(raw_root.strip("/\\")) if raw_root else cloud_root
 
 	raise PitNotFoundError(
 		f"Cannot resolve {operation} target '{target_name}' without -r or --pitroot, or a configured -c or --cloud provider."
 	)
 
 
-def ensure_directory(path: Path | str) -> Path:
+def ensure_directory(path: InqEntry | str) -> InqPath:
 	"""Ensures the directory exists, creating intermediate parents if needed."""
-	p = Path(path)
+	p = InqPath.from_directory(path)
 	p.mkdir(parents=True, exist_ok=True)
 	return p
 
 
 def safe_write_in_place(
-	file_path: Path,
+	file_path: InqEntry,
 	content: str,
 	backup: bool = False,
-	backup_dir: Path | None = None,
+	backup_dir: InqEntry | None = None,
 ) -> None:
 	"""
 	Writes text content adhering to the CR003/CR022 cloud-safe persistence contract:
@@ -137,16 +135,13 @@ def safe_write_in_place(
 	if backup and file_path.is_file() and backup_dir is not None:
 		ensure_directory(backup_dir)
 		backup_target = backup_dir / f"{file_path.name}.bak"
-		shutil.copy2(file_path, backup_target)
+		InqFile(file_path).copy_to(backup_target)
 
 	# In-place write with UTF-8 encoding and no trailing newline added automatically
-	with open(file_path, "w", encoding="utf-8", newline="") as f:
-		f.write(content)
-		f.flush()
-		os.fsync(f.fileno())
+	InqTextFile(file_path).write_durable(content)
 
 
-def safe_write_sibling_tmp(file_path: Path, content: str) -> None:
+def safe_write_sibling_tmp(file_path: InqEntry, content: str) -> None:
 	"""
 	Writes content to an in-place sibling temporary file (e.g. Person.pit.tmp)
 	in the exact same directory, followed by an atomic rename on the same volume.
@@ -155,26 +150,23 @@ def safe_write_sibling_tmp(file_path: Path, content: str) -> None:
 	ensure_directory(file_path.parent)
 	tmp_file = file_path.parent / f"{file_path.name}.tmp"
 
-	with open(tmp_file, "w", encoding="utf-8", newline="") as f:
-		f.write(content)
-		f.flush()
-		os.fsync(f.fileno())
+	InqTextFile(tmp_file).write_durable(content)
 
 	tmp_file.replace(file_path)
 
 
-def safe_read_text(file_path: Path) -> str | None:
+def safe_read_text(file_path: InqEntry) -> str | None:
 	"""Reads file content as UTF-8 string, returning None if missing or unreadable."""
 	if not file_path.is_file():
 		return None
 	try:
-		with open(file_path, "r", encoding="utf-8") as f:
+		with InqTextFile(file_path).open("r", encoding="utf-8") as f:
 			return f.read()
 	except (OSError, UnicodeDecodeError):
 		return None
 
 
-def safe_delete_file(file_path: Path) -> bool:
+def safe_delete_file(file_path: InqEntry) -> bool:
 	"""Safely deletes a file if it exists, returning True if successfully removed."""
 	try:
 		if file_path.is_file():

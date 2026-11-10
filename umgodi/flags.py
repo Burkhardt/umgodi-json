@@ -9,14 +9,12 @@ from __future__ import annotations
 
 import datetime
 import os
-from pathlib import Path
+from inqaba import InqEntry
 import socket
 import sys
 from typing import ClassVar
 
 from .canonical import (
-	format_iso_timestamp,
-	parse_iso_timestamp,
 	utcnow,
 )
 from .fs import safe_delete_file, safe_read_text, safe_write_in_place
@@ -46,7 +44,7 @@ def get_machine_name() -> str:
 def get_process_name() -> str:
 	"""Returns the executable name of the current process."""
 	if sys.argv and sys.argv[0]:
-		stem = Path(sys.argv[0]).stem
+		stem = InqEntry(sys.argv[0]).stem
 		if stem:
 			return stem
 	return "python"
@@ -125,7 +123,7 @@ class MasterFlagFile:
 
 	TICKET_DURATION: ClassVar[datetime.timedelta] = datetime.timedelta(seconds=60)
 
-	def __init__(self, pit_dir: Path, name: str = "Master") -> None:
+	def __init__(self, pit_dir: InqEntry, name: str = "Master") -> None:
 		self.pit_dir = pit_dir
 		self.name = name
 		self.path = pit_dir / f"{name}.flag"
@@ -187,14 +185,14 @@ class MasterFlagFile:
 		return tv
 
 	@classmethod
-	def conflict_flags(cls, pit_dir: Path) -> list[Path]:
+	def conflict_flags(cls, pit_dir: InqEntry) -> list[InqEntry]:
 		"""
 		Enumerates provider conflict signals: files matching Master*.flag
 		whose stem is longer than 'Master'.
 		"""
 		if not pit_dir.is_dir():
 			return []
-		results: list[Path] = []
+		results: list[InqEntry] = []
 		for p in pit_dir.glob("Master*.flag"):
 			if p.stem != "Master" and len(p.name) > len("Master.flag"):
 				results.append(p)
@@ -208,7 +206,7 @@ class ProcessFlagFile(MasterFlagFile):
 	Content: '{MachineName}:{ProcessName}:{PID}|{ISO8601-timestamp}'.
 	"""
 
-	def __init__(self, pit_dir: Path, subscriber: str | None = None) -> None:
+	def __init__(self, pit_dir: InqEntry, subscriber: str | None = None) -> None:
 		self.subscriber = subscriber
 		stem = current_flag_name(subscriber)
 		super().__init__(pit_dir, name=stem)
@@ -244,7 +242,7 @@ class ProcessFlagFile(MasterFlagFile):
 		return safe_delete_file(self.path)
 
 	@classmethod
-	def is_process_window_active(cls, pit_dir: Path, exact_process_identity: str) -> bool:
+	def is_process_window_active(cls, pit_dir: InqEntry, exact_process_identity: str) -> bool:
 		"""
 		Checks if '{exact_process_identity}.flag' exists and has a timestamp
 		within MasterFlagFile.TICKET_DURATION.
@@ -261,7 +259,7 @@ class ProcessFlagFile(MasterFlagFile):
 	@classmethod
 	def process_window_time(
 		cls,
-		pit_dir: Path,
+		pit_dir: InqEntry,
 		exact_process_identity: str,
 	) -> datetime.datetime | None:
 		"""Returns the recorded timestamp of a process flag, or None if missing."""

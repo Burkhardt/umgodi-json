@@ -24,7 +24,7 @@ from .audit import (
 	PitAuditEvent,
 	PitAuditReadResult,
 )
-from .config import DEFAULT_CONFIG_FILE_LOCATION, OsConfig, missing_configuration_diagnostic
+from .config import DEFAULT_CONFIG_FILE_LOCATION, InqConfig, missing_configuration_diagnostic
 from .history import PitItems
 from .icons import Icons
 from .item import PitItem
@@ -54,6 +54,7 @@ __all__ = [
 	"PitAuditEvent",
 	"PitAuditReadResult",
 	"PitAudit",
+	"InqConfig",
 	"OsConfig",
 	"DEFAULT_CONFIG_FILE_LOCATION",
 	"missing_configuration_diagnostic",
@@ -70,3 +71,6 @@ __all__ = [
 	"TombstoneError",
 	"utcnow",
 ]
+
+# Compatibility for early Umgodi consumers.
+OsConfig = InqConfig

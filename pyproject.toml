@@ -46,6 +46,9 @@ only-include = [
 	"API.md",
 	"pyproject.toml",
 	"assets",
+	"doc",
+	"tests",
+	"scripts",
 ]
 
 [tool.pytest.ini_options]
