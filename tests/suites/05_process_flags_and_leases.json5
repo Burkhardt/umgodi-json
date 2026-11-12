@@ -5,8 +5,8 @@
 {
 	Name: "05. Process Flags, Master Leases, and Concurrency Parity",
 	Variables: {
-		RootName: "AIA.ParitySuite.05_Flags",
-		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.05_Flags"
+		RootName: "{root}/AIA.ParitySuite.05_Flags",
+		PitRoot: "{root}/AIA.ParitySuite.05_Flags"
 	},
 	Construct: [
 		"rm -rf {PitRoot}"

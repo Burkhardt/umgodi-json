@@ -5,8 +5,8 @@
 {
 	Name: "02. Changes, Receipts, and Grace Period Lifecycle",
 	Variables: {
-		RootName: "AIA.ParitySuite.02_Changes",
-		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.02_Changes"
+		RootName: "{root}/AIA.ParitySuite.02_Changes",
+		PitRoot: "{root}/AIA.ParitySuite.02_Changes"
 	},
 	Construct: [
 		"rm -rf {PitRoot}"

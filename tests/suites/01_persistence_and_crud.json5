@@ -5,8 +5,8 @@
 {
 	Name: "01. Persistence & CRUD Lifecycle Parity",
 	Variables: {
-		RootName: "AIA.ParitySuite.01_Crud",
-		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.01_Crud"
+		RootName: "{root}/AIA.ParitySuite.01_Crud",
+		PitRoot: "{root}/AIA.ParitySuite.01_Crud"
 	},
 	Construct: [
 		"rm -rf {PitRoot}"

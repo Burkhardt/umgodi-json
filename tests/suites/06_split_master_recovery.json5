@@ -5,8 +5,8 @@
 {
 	Name: "06. Split-Master Recovery & Conflict Resolution Parity",
 	Variables: {
-		RootName: "AIA.ParitySuite.06_Recovery",
-		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.06_Recovery"
+		RootName: "{root}/AIA.ParitySuite.06_Recovery",
+		PitRoot: "{root}/AIA.ParitySuite.06_Recovery"
 	},
 	Construct: [
 		"rm -rf {PitRoot}"

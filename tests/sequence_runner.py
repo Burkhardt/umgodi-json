@@ -19,7 +19,31 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from umgodi.config import loads_json5
+from umgodi.config import loads_json5, InqConfig
+
+
+def allocate_suite_root(data):
+	"""Allocate owned Dropbox storage before any suite command can execute."""
+	if data.get("Cloud", "Dropbox") != "Dropbox":
+		raise ValueError("Local sequence suites require Cloud=Dropbox")
+	if data.get("Root") not in (None, "TEMP"):
+		raise ValueError("Local sequence roots must be allocated per run")
+	cloud = InqConfig.load().get_cloud_root("Dropbox")
+	if cloud is None or not cloud.is_dir():
+		raise RuntimeError("Sequence suites require configured, available Cloud.Dropbox; no OneDrive fallback")
+	return tempfile.TemporaryDirectory(prefix="RAIkeep.Test.", dir=str(cloud))
+
+
+def suite_variables(data, root):
+	variables = {"root": root, "cloud": "Dropbox"}
+	for key, value in data.get("Variables", {}).items():
+		if key in ("root", "cloud"):
+			raise ValueError(f"Suite cannot override managed {key}")
+		variables[key] = str(value).replace("{root}", root)
+	for key in ("RootName", "PitRoot"):
+		if key in variables and not Path(variables[key]).resolve().is_relative_to(Path(root).resolve()):
+			raise ValueError(f"{key} must stay inside the owned Dropbox run directory")
+	return variables
 
 
 @dataclass
@@ -197,21 +221,12 @@ class SequenceRunner:
 		destruct_steps = data.get("Destruct", [])
 		test_cases = data.get("Tests", [])
 
-		# Determine or allocate root
-		temp_dir: tempfile.TemporaryDirectory[str] | None = None
-		root_var = data.get("Root")
-		if not root_var or root_var == "TEMP":
-			temp_dir = tempfile.TemporaryDirectory(prefix="jpit_parity_")
-			root_val = temp_dir.name
-		else:
-			root_val = root_var
-
-		variables = {
-			"root": root_val,
-			"cloud": data.get("Cloud", "OneDrive"),
-		}
-		for k, v in data.get("Variables", {}).items():
-			variables[k] = str(v)
+		temp_dir = allocate_suite_root(data)
+		try:
+			variables = suite_variables(data, temp_dir.name)
+		except Exception:
+			temp_dir.cleanup()
+			raise
 
 		suite_start = time.monotonic()
 		case_results: list[TestCaseResult] = []

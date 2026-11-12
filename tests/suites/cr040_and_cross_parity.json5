@@ -3,8 +3,8 @@
 {
 	Name: "CR040 & Cross-Engine Parity Suite",
 	Variables: {
-		RootName: "AIA.ParitySuite",
-		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite"
+		RootName: "{root}/AIA.ParitySuite",
+		PitRoot: "{root}/AIA.ParitySuite"
 	},
 	Construct: [
 		"rm -rf {PitRoot}"

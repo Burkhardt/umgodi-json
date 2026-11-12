@@ -5,8 +5,8 @@
 {
 	Name: "04. Compaction, Event Archiving, and Audit Parity",
 	Variables: {
-		RootName: "AIA.ParitySuite.04_Events",
-		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.04_Events"
+		RootName: "{root}/AIA.ParitySuite.04_Events",
+		PitRoot: "{root}/AIA.ParitySuite.04_Events"
 	},
 	Construct: [
 		"rm -rf {PitRoot}"

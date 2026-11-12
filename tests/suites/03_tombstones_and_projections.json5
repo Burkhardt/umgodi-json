@@ -5,8 +5,8 @@
 {
 	Name: "03. Tombstones, Property Projections, and Time-Travel Parity",
 	Variables: {
-		RootName: "AIA.ParitySuite.03_Tombstones",
-		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.03_Tombstones"
+		RootName: "{root}/AIA.ParitySuite.03_Tombstones",
+		PitRoot: "{root}/AIA.ParitySuite.03_Tombstones"
 	},
 	Construct: [
 		"rm -rf {PitRoot}"
