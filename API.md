@@ -1,6 +1,6 @@
-# jsonpit API Reference (v4.6.3)
+# umgodi API Reference (v0.1.0)
 
-This document provides a foldable, searchable reference for the public `jsonpit` Python API. Designed for 100% C# JsonPit parity, zero third-party runtime dependencies, and Smalltalk-grade object-oriented architecture.
+The `umgodi-json` distribution provides the public `umgodi` API and uses Inqaba for shared filesystem and configuration operations.
 
 ---
 
@@ -8,12 +8,12 @@ This document provides a foldable, searchable reference for the public `jsonpit`
 
 ### Core Replicated Storage Architecture
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/doc/uml/jsonpitCD.png" alt="Core Replicated Storage Architecture" width="700"/>
+  <img src="https://raw.githubusercontent.com/Burkhardt/umgodi-json/main/doc/uml/jsonpitCD.png" alt="Core Replicated Storage Architecture" width="700"/>
 </p>
 
 ### Storage Maintenance & Recovery Audit Architecture
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/doc/uml/jsonpit_opsCD.png" alt="Operations & Recovery Audit Architecture" width="700"/>
+  <img src="https://raw.githubusercontent.com/Burkhardt/umgodi-json/main/doc/uml/jsonpit_opsCD.png" alt="Operations & Recovery Audit Architecture" width="700"/>
 </p>
 
 ---
@@ -153,7 +153,7 @@ This document provides a foldable, searchable reference for the public `jsonpit`
 - <details>
   <summary><code>PitAudit</code>: Read-only inspection of durable event logs</summary>
 
-  Provides read-only access to durable JsonPit recovery events under `Events/` without opening a `Pit`, creating process activity flags, acquiring leases, or mutating disk state (CR003, coordinated v3.13.2). Inspects both loose `*.event` files and immutable `Events_*.zip` compaction archives.
+  Provides read-only access to durable JsonPit recovery events under `Events/` without opening a `Pit`, creating process activity flags, acquiring leases, or mutating disk state (CR003). Inspects both loose `*.event` files and immutable `Events_*.zip` compaction archives.
 
   **Key Methods:**
   - `PitAudit.inspect(pit_directory: Path | str, machine_filter: str = "all", min_level: LogLevel = LogLevel.TRACE) -> PitAuditReadResult`: Reads, validates, deduplicates by `EventId`, filters by machine/severity, and orders events deterministically by machine, UTC time, and event identity.
@@ -200,7 +200,7 @@ This document provides a foldable, searchable reference for the public `jsonpit`
 
 ## Exception Hierarchy
 
-All `jsonpit` exceptions derive from `JsonPitError`:
+All `umgodi` exceptions derive from `JsonPitError`:
 
 ```text
 JsonPitError

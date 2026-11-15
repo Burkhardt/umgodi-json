@@ -16,7 +16,7 @@ import sys
 import tarfile
 import tempfile
 import venv
-import zipfile
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,17 +33,29 @@ def main():
 	env.pop("PYTHONHOME", None)
 	evidence = {"status": "running", "directory": str(work), "commands": []}
 
-	def run(command, cwd=work):
-		result = subprocess.run([str(a) for a in command], cwd=cwd, env=env, text=True, capture_output=True)
+	def run(command, cwd=work, command_env=env):
+		result = subprocess.run([str(a) for a in command], cwd=cwd, env=command_env, text=True, capture_output=True)
 		evidence["commands"].append({"argv": [str(a) for a in command], "cwd": str(cwd), "returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr})
 		print(result.stdout, end="")
 		if result.returncode:
 			print(result.stderr, file=sys.stderr)
 			raise RuntimeError(f"Command failed: {command}")
+		return result.stdout.strip()
 
 	try:
+		# The paired pits CLI also reads RAIkeep configuration during parity tests.
+		home = work / "test-home"
+		config = home / ".config" / "RAIkeep.json5"
+		config.parent.mkdir(parents=True)
+		cloud = work / "cloud"
+		cloud.mkdir()
+		config.write_text(json.dumps({
+			"TempDir": str(work / "temp"), "DefaultCloudOrder": ["OneDrive"],
+			"Cloud": {"OneDrive": str(cloud)},
+		}), encoding="utf-8")
+		test_env = {**env, "HOME": str(home), "PYTHONPATH": os.pathsep.join(map(str, (inqaba, ROOT)))}
 		for package in (inqaba, ROOT):
-			run([sys.executable, "-m", "pytest", "tests", "-q"], cwd=package)
+			run([sys.executable, "-m", "pytest", "tests", "-q"], cwd=package, command_env=test_env)
 			run([sys.executable, "-m", "build", "--outdir", dist], cwd=package)
 		run([sys.executable, "-m", "twine", "check", *sorted(dist.iterdir())])
 		for archive in dist.glob("*.tar.gz"):
@@ -79,8 +91,10 @@ with tempfile.TemporaryDirectory() as tmp:
         assert isinstance(pit.pit_dir, InqPath)
 print('Installed-wheel imports, metadata and persistence smoke passed')
 """])
+		with (ROOT / "pyproject.toml").open("rb") as stream:
+			version = tomllib.load(stream)["project"]["version"]
 		for command in ("jpit", "umgodi"):
-			run([bin_dir / command, "--version"])
+			assert run([bin_dir / command, "--version"]) == f"{command} v{version}"
 		evidence["artifacts"] = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in dist.iterdir()}
 		evidence["status"] = "passed"
 	finally:

@@ -36,6 +36,10 @@ dev = [
 	"ruff>=0.5",
 ]
 
+[project.urls]
+Repository = "https://github.com/Burkhardt/umgodi-json"
+ReleaseNotes = "https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/umgodi-json_RELEASE_NOTES_4.x.md"
+
 [tool.hatch.build.targets.wheel]
 packages = ["umgodi"]
 
@@ -44,6 +48,7 @@ only-include = [
 	"umgodi",
 	"README.md",
 	"API.md",
+	"GettingStarted.md",
 	"pyproject.toml",
 	"assets",
 	"doc",

@@ -1,14 +1,14 @@
-# Getting Started with Python jsonpit (v4.6.3)
+# Getting Started with Python umgodi-json (v0.1.0)
 
-This guide provides a practical walkthrough for using **`jsonpit`** from Python—either embedded as a library in your services, AI agent frameworks, and data pipelines, or as the standalone **`jpit`** CLI for command-line workflows.
+This guide provides a practical walkthrough for using **`umgodi`** from Python—either embedded as a library in your services, AI agent frameworks, and data pipelines, or as the standalone **`jpit`** CLI for command-line workflows.
 
-It is based on `jsonpit` v4.6.3, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+It is based on `umgodi` v0.1.0, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
 
 ---
 
 ## 1. Purpose and Mental Model
 
-`jsonpit` is a cloud-first, file-based, distributed replicated storage engine for `Id`-identified items that need to be shared, synchronized, and reloaded across machines and processes without introducing a database daemon.
+`umgodi` is a cloud-first, file-based, distributed replicated storage engine for `Id`-identified items that need to be shared, synchronized, and reloaded across machines and processes without introducing a database daemon.
 
 ### The Core Concepts:
 - **`Pit`**: A named container directory stored on disk (e.g. `Person/Person.pit`).
@@ -23,36 +23,21 @@ It is based on `jsonpit` v4.6.3, featuring 100% lockstep parity with C# `JsonPit
 
 ---
 
-## 2. CLI Quick Setup (All 5 CLIs)
-
-To install the entire suite of CLI tools (`amafu`, `raid`, `iorg`, `pits`, and `jpit`) directly on any machine into `~/.local/bin` without cloning any repository or requiring `sudo`:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Burkhardt/RAIkeep/main/scripts/install-clis.sh | bash -s -- 4.6.3 local
-```
-
-Verify your installation:
-```bash
-jpit -v
-```
-
----
-
 ## 3. Installing the CLI or Python Library
 
 For the CLI, install one pipx environment that supplies both commands:
 
 ```bash
-pipx install "jsonpit==4.6.3"
+pipx install "umgodi-json==0.1.0"
 # For an existing environment:
-pipx upgrade jsonpit
+pipx upgrade umgodi-json
 jpit --version
-jsonpit --version
+umgodi --version
 ```
 
-The outputs are `jpit v4.6.3` and `jsonpit v4.6.3`. If a separate `jpit` pipx
+The outputs are `jpit v0.1.0` and `umgodi v0.1.0`. If a separate `jpit` pipx
 environment already exists, run `pipx uninstall jpit`, followed by
-`pipx install --force "jsonpit==4.6.3"` to restore both command links.
+`pipx install --force "umgodi-json==0.1.0"` to restore both command links.
 
 Ubuntu/Debian and Homebrew may reject system-wide pip installs as externally
 managed. Use pipx for the CLI, or an isolated virtual environment for library use:
@@ -60,16 +45,16 @@ managed. Use pipx for the CLI, or an isolated virtual environment for library us
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install "jsonpit==4.6.3"
+python -m pip install "umgodi-json==0.1.0"
 ```
 
 ---
 
 ## 4. Configuration & Simplified Cloud Shortcuts
 
-`jsonpit` automatically reads your cloud provider roots from `~/.config/RAIkeep.json5` (with fallback to `~/.config/jsonpit.json5` or `$JSONPIT_CONFIG`).
+`umgodi` automatically reads your cloud provider roots from `~/.config/RAIkeep.json5` (with fallback to `~/.config/jsonpit.json5` or `$JSONPIT_CONFIG`).
 
-### Zero-Friction Setup via [`amafu`](https://www.nuget.org/packages/Amafu) (v4.6.3)
+### Zero-Friction Setup via [`amafu`](https://www.nuget.org/packages/Amafu)
 
 On macOS and Linux, enable your cloud clients (iCloud, OneDrive, Google Drive, Dropbox), then use [`amafu`](https://www.nuget.org/packages/Amafu) to auto-detect your local sync folders and create clean, unified shortcuts in `~/.CloudStorage/`:
 
@@ -102,7 +87,7 @@ You never have to search for obscure operating system cloud paths again. Your re
 Here is the recommended Python idiom using the `Pit.open()` context manager:
 
 ```python
-from jsonpit import Pit, PitItem
+from umgodi import Pit, PitItem
 
 # 1. Open the Pit using the context manager
 # (Acquires a process activity window, loads state, and auto-saves on exit)
@@ -147,7 +132,7 @@ with Pit.open("person", cloud="GoogleDrive") as people:
 ```
 
 ### Removing Attributes (Tombstones)
-`jsonpit` never mutates history destructively. Deleting a property appends a **null tombstone** that masks previous values in the projection while preserving time travel:
+`umgodi` never mutates history destructively. Deleting a property appends a **null tombstone** that masks previous values in the projection while preserving time travel:
 
 ```python
 with Pit.open("person", cloud="GoogleDrive") as people:
@@ -269,7 +254,7 @@ jpit export person --jq '.[].Id'
 
 ## 7. 100% C# / `pits` Cross-Language Interoperability
 
-Every Pit created or updated by Python `jsonpit` is 100% binary- and schema-compatible with C# `JsonPit` and the `pits` CLI.
+Every Pit created or updated by Python `umgodi` is 100% binary- and schema-compatible with C# `JsonPit` and the `pits` CLI.
 
 Write an entity attribute with Python `jpit`:
 ```bash
@@ -286,16 +271,6 @@ Both engines enforce identical timestamp parsing, canonical key ordering, lease 
 ---
 
 ## 8. Alternative Installation & Troubleshooting
-
-### Installing only `jpit` standalone
-If you only need the `jpit` command without the .NET tools:
-
-👉 **[Download `jpit` standalone executable](https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/bin/jpit)**
-
-Or run via `curl`:
-```bash
-mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/bin/jpit -o ~/.local/bin/jpit && chmod +x ~/.local/bin/jpit
-```
 
 ### Shell PATH troubleshooting
 If your shell reports `command not found: jpit`, ensure that `~/.local/bin` is in your shell `PATH`:

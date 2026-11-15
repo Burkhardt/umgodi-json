@@ -4,8 +4,7 @@
 
 # umgodi
 
-> **Daemon-free distributed storage over Cloud Drives for developers and AI agents — multi-process, immutable history, zero dependencies.**  
-> *100% C# JsonPit Parity · Zero Third-Party Runtime Dependencies · Smalltalk-Grade Object-Oriented Architecture*
+Distributed JSON storage with immutable history across synchronized cloud drives.
 
 JsonPit change requests and release notes are centralized in the RAIkeep [`doc/`](https://github.com/Burkhardt/RAIkeep/tree/main/doc) directory under `JsonPit_...` filenames; they are not stored separately in this child repository.
 
@@ -40,7 +39,9 @@ not against the projected state. A sparse patch matching projected values may
 therefore still append a fragment; distributed ordering and tombstones are preserved.
 
 
-## Latest Version 4.6.3
+## Latest Version 0.1.0
+
+The active Python implementation of JsonPit is now distributed as `umgodi-json`. It uses Inqaba for paths, files, and shared configuration.
 
 Without `-c`, `jpit export Object -r AfricaStage --out-dir ./exports` resolves
 the bare tenant name beneath the configured default cloud, matching `status`.
@@ -54,7 +55,7 @@ snapshot is absent. It emits no JSON or success receipt and leaves existing
 export files intact. `--wwwa` requires all four snapshots; a valid existing
 empty snapshot still exports `[]` successfully.
 
-Latest release notes: [umgodi-json 4.6.3 release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/umgodi-json_RELEASE_NOTES_4.x.md#463).
+Latest release notes: [coordinated RAIkeep release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/umgodi-json_RELEASE_NOTES_4.x.md#464).
 
 ## Previous Versions
 
@@ -64,7 +65,7 @@ See the [umgodi-json 4.x release notes](https://github.com/Burkhardt/RAIkeep/blo
 
 - **The Persistence Fabric for AI Agents:** Autonomous agents running across macOS desktop apps, backend servers, and web runtimes synchronize memory and living state across shared cloud drives without managing database servers, connection pools, or cloud credentials.
 - **0% Deviation from C# JsonPit:** Reads, merges, and writes pits with identical canonical JSON serialization, UTC timestamp precision, and tombstone semantics.
-- **Zero Third-Party Runtime Dependencies:** Built strictly on the Python Standard Library (`json`, `pathlib`, `typing`, `dataclasses`, `datetime`, `hashlib`, `socket`).
+- **Filesystem and configuration:** Umgodi uses the Inqaba framework.
 - **Cloud-Safe Filesystem Invariants (CR022):** In-place sibling writes (`.pit.tmp` $\rightarrow$ atomic rename within the same cloud volume). Prevents cross-device link errors (`EXDEV`) and OneDrive mass-deletion alarms.
 - **Full Distributed Lease Protocol:** Implements master writer leases (`Master.flag`) and PID-specific process activity windows (`{Machine}-{Process}-{PID}.flag`) with automatic process naming from `sys.argv[0]`.
 - **Ecosystem Configuration:** Seamlessly reads machine cloud paths from `~/.config/RAIkeep.json5` (with `~/.config/umgodi.json5` fallback).
@@ -83,32 +84,7 @@ See the [umgodi-json 4.x release notes](https://github.com/Burkhardt/RAIkeep/blo
 - **`PitMaintenanceOptions` / `PitMaintenanceResult`**: Automated reconciliation, 10-minute receipt grace periods, and flag pruning (CR021/CR022).
 - **`PitAudit` / `PitAuditEvent`**: Read-only durable recovery event inspection without acquiring leases or flags (CR003).
 
-### 1. Core Replicated Storage Architecture
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Burkhardt/umgodi-json/main/doc/uml/umgodiCD.png" alt="umgodi Core Class Diagram" width="700"/>
-</p>
-
-<p align="center">
-  <em>Core Living Entity Model · Vector SVG: <a href="https://github.com/Burkhardt/umgodi-json/blob/main/doc/uml/umgodiCD.svg">umgodiCD.svg</a></em>
-</p>
-
-### 2. Storage Maintenance & Event Recovery Audit Architecture
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Burkhardt/umgodi-json/main/doc/uml/umgodi_opsCD.png" alt="umgodi Operations Class Diagram" width="700"/>
-</p>
-
-<p align="center">
-  <em>Maintenance &amp; Recovery Audit · Vector SVG: <a href="https://github.com/Burkhardt/umgodi-json/blob/main/doc/uml/umgodi_opsCD.svg">umgodi_opsCD.svg</a></em>
-</p>
-
-> 📖 **Architecture, Guides & Full API:**  
-> • For a hands-on practical walkthrough with Python library and CLI examples, see **[GettingStarted.md](https://github.com/Burkhardt/umgodi-json/blob/main/GettingStarted.md)**.  
-> • For the complete unified architecture across all subsystems, see **[umgodi_unifiedCD.svg](https://github.com/Burkhardt/umgodi-json/blob/main/doc/uml/umgodi_unifiedCD.svg)**.  
-> • For comprehensive method signatures, exception contracts, and protocol details, see **[API.md](https://github.com/Burkhardt/umgodi-json/blob/main/API.md)**.
-
----
+See the [class diagram](https://raw.githubusercontent.com/Burkhardt/umgodi-json/main/doc/umgodi-class-diagram.svg), its [PlantUML source](https://github.com/Burkhardt/umgodi-json/blob/main/doc/umgodi-class-diagram.puml), the [getting started guide](https://github.com/Burkhardt/umgodi-json/blob/main/GettingStarted.md) and the [API reference](https://github.com/Burkhardt/umgodi-json/blob/main/API.md).
 
 ## Installation & Upgrade
 
@@ -119,7 +95,7 @@ Python 3.12 or newer is required.
 Install one environment for both commands:
 
 ```bash
-pipx install "umgodi==4.6.3"
+pipx install "umgodi-json==0.1.0"
 jpit --version
 umgodi --version
 ```
@@ -127,18 +103,10 @@ umgodi --version
 To upgrade:
 
 ```bash
-pipx upgrade umgodi
+pipx upgrade umgodi-json
 ```
 
-The expected outputs are `jpit v4.6.3` and `umgodi v4.6.3`. Do not install both
-`umgodi` and the `jpit` companion into separate pipx environments: both expose
-the same commands. If both were previously installed, remove the redundant
-companion environment and restore the command links:
-
-```bash
-pipx uninstall jpit
-pipx install --force "umgodi==4.6.3"
-```
+The expected outputs are `jpit v0.1.0` and `umgodi v0.1.0`. Both commands come from the same distribution.
 
 On Ubuntu/Debian, install pipx with `sudo apt install pipx` if needed. On macOS,
 use `brew install pipx`. Run `pipx ensurepath` and start a new shell if the commands
@@ -150,12 +118,10 @@ are not on PATH. System Python may reject direct pip installation with
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install "umgodi==4.6.3"
+python -m pip install "umgodi-json==0.1.0"
 ```
 
-The `jpit` companion distribution is an alternative installation name for the
-same CLI and depends on the matching `umgodi` release. Prefer `umgodi` for a new
-installation.
+Use `import umgodi` in Python. Existing `jsonpit` environments can continue using the frozen 4.6.3 release.
 
 ---
 
