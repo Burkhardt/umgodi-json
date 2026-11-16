@@ -39,7 +39,7 @@ not against the projected state. A sparse patch matching projected values may
 therefore still append a fragment; distributed ordering and tombstones are preserved.
 
 
-## Latest Version 0.1.0
+## Latest Version 4.6.4
 
 The active Python implementation of JsonPit is now distributed as `umgodi-json`. It uses Inqaba for paths, files, and shared configuration.
 
@@ -95,7 +95,7 @@ Python 3.12 or newer is required.
 Install one environment for both commands:
 
 ```bash
-pipx install "umgodi-json==0.1.0"
+pipx install "umgodi-json==4.6.4"
 jpit --version
 umgodi --version
 ```
@@ -106,7 +106,7 @@ To upgrade:
 pipx upgrade umgodi-json
 ```
 
-The expected outputs are `jpit v0.1.0` and `umgodi v0.1.0`. Both commands come from the same distribution.
+The expected outputs are `jpit v4.6.4` and `umgodi v4.6.4`. Both commands come from the same distribution.
 
 On Ubuntu/Debian, install pipx with `sudo apt install pipx` if needed. On macOS,
 use `brew install pipx`. Run `pipx ensurepath` and start a new shell if the commands
@@ -118,7 +118,7 @@ are not on PATH. System Python may reject direct pip installation with
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install "umgodi-json==0.1.0"
+python -m pip install "umgodi-json==4.6.4"
 ```
 
 Use `import umgodi` in Python. Existing `jsonpit` environments can continue using the frozen 4.6.3 release.

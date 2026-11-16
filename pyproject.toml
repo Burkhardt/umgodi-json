@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "umgodi-json"
-version = "0.1.0"
+version = "4.6.4"
 description = "Distributed, cloud-drive-backed JSON persistence for Python with immutable history and multi-process synchronization."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -22,7 +22,7 @@ classifiers = [
 	"Topic :: Database :: Database Engines/Servers",
 	"Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = ["inqaba>=0.1.0"]
+dependencies = ["inqaba>=4.6.4"]
 
 [project.scripts]
 jpit = "umgodi.cli:main"
