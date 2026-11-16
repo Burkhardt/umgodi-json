@@ -375,3 +375,117 @@ def test_maintain_wwwa_cloud_not_hijacked_by_local_cwd_directory() -> None:
 		finally:
 			os.chdir(orig_cwd)
 			OsConfig.reset()
+
+
+def test_historical_store_renews_lease_and_retires_accounted_changes(tmp_path) -> None:
+	directory = tmp_path / "Historical"
+	directory.mkdir()
+	old = format_iso_timestamp(utcnow() - datetime.timedelta(days=8))
+
+	def publish(key):
+		item = PitItem({"Id": key, "Modified": old}, invalidate=False)
+		return ChangeFile.create(directory, item, "Peer-app-42")
+
+	change = publish("First")
+	with Pit.open(directory, autoload=False) as pit:
+		assert pit.maintain(apply=True).canonical_persisted
+		assert pit.master_flag.is_owned_by(pit.exact_process_identity)
+		assert pit.master_flag.time == pit.process_flag.time
+		receipt = change.with_suffix(".receipt")
+		receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
+		pending = publish("Second")
+		result = pit.maintain(apply=True)
+		assert result.canonical_persisted and result.deferred == []
+		assert result.change_files_removed == result.receipts_removed == 1
+		assert not change.exists() and not receipt.exists()
+		assert pending.is_file()
+		assert pit.master_flag.is_owned_by(pit.exact_process_identity)
+		data = json.loads(pit.canonical_file.read_text())
+		assert {frag["Id"] for history in data for frag in history} == {"First", "Second"}
+
+
+def test_maintenance_rechecks_owner_and_canonical_evidence_before_cleanup(tmp_path, monkeypatch):
+	for failure in ("foreign-owner", "missing-history"):
+		directory = tmp_path / failure
+		directory.mkdir()
+		change = ChangeFile.create(directory, PitItem({"Id": "Old"}), "Peer-app-42")
+		with Pit.open(directory, autoload=False) as pit:
+			assert pit.maintain(apply=True).receipts_created == 1
+			receipt = change.with_suffix(".receipt")
+			receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
+			ChangeFile.create(directory, PitItem({"Id": "NeedsStore"}), "Peer-app-42")
+			store = pit._store_canonical
+
+			def store_then_intervene(**kwargs):
+				written = store(**kwargs)
+				if failure == "foreign-owner":
+					pit.master_flag.update(originator="OtherHost-peer-42")
+				else:
+					pit.canonical_file.write_text("[]")
+				return written
+
+			monkeypatch.setattr(pit, "_store_canonical", store_then_intervene)
+			result = pit.maintain(apply=True)
+			assert result.change_files_removed == result.receipts_removed == 0
+			assert change.is_file() and receipt.is_file()
+			if failure == "foreign-owner":
+				assert f"Cleanup revalidation deferred {change.name}" in result.deferred
+				assert pit.master_flag.is_owned_by("OtherHost-peer-42")
+			else:
+				assert f"Canonical pit does not yet account for {change.name}" in result.deferred
+
+
+def test_writable_open_retires_backlog_without_rewriting_canonical(tmp_path):
+	directory = tmp_path / "Backlog"
+	directory.mkdir()
+	old = utcnow() - datetime.timedelta(days=2)
+	eligible = format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11))
+	data, changes = [], []
+	for index in range(102):
+		item = PitItem({"Id": f"Item{index}", "Modified": format_iso_timestamp(old + datetime.timedelta(seconds=index))}, invalidate=False)
+		data.append([item.to_dict()])
+		change = ChangeFile.create(directory, item, "Peer-app-42")
+		changes.append(change)
+		if index < 101:
+			change.with_suffix(".receipt").write_text(eligible if index < 100 else format_iso_timestamp(utcnow()))
+	canonical = directory / "Backlog.pit"
+	canonical.write_text(json.dumps(data))
+	last_write = canonical.stat().st_mtime_ns
+	with Pit.open(directory, read_only=True, unflagged=True):
+		assert all(change.is_file() for change in changes)
+	with Pit.open(directory) as opened:
+		assert len(opened) == 102
+		assert canonical.stat().st_mtime_ns == last_write
+		assert all(not p.exists() and not p.with_suffix(".receipt").exists() for p in changes[:100])
+		assert all(p.is_file() and p.with_suffix(".receipt").is_file() for p in changes[100:])
+
+
+def test_jpit_maintain_apply_respects_foreign_lease(tmp_path, capsys):
+	directory = tmp_path / "Busy"
+	directory.mkdir()
+	item = PitItem({"Id": "Canonical"})
+	(directory / "Busy.pit").write_text(json.dumps([[item.to_dict()]]))
+	change = ChangeFile.create(directory, item, "Peer-app-42")
+	receipt = change.with_suffix(".receipt")
+	receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
+	foreign = MasterFlagFile(directory)
+	foreign.update(originator="Peer-app-42")
+	assert main(["maintain", "Busy", "-r", str(tmp_path), "--apply", "--json"]) == 0
+	result = json.loads(capsys.readouterr().out)
+	assert not result["CurrentMaster"]
+	assert result["ChangeFilesRemoved"] == result["ReceiptsRemoved"] == 0
+	assert foreign.is_owned_by("Peer-app-42") and change.is_file() and receipt.is_file()
+
+
+def test_jpit_seed_ordinary_open_retires_accounted_change(tmp_path):
+	directory = tmp_path / "Person"
+	directory.mkdir()
+	item = PitItem({"Id": "Imported"})
+	(directory / "Person.pit").write_text(json.dumps([[item.to_dict()]]))
+	change = ChangeFile.create(directory, item, "Peer-app-42")
+	receipt = change.with_suffix(".receipt")
+	receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
+	source = tmp_path / "new-person.json"
+	source.write_text('{"Id":"NewEntry"}')
+	assert main(["seed", "Person", "--source", str(source), "-r", str(tmp_path), "-n"]) == 0
+	assert not change.exists() and not receipt.exists()

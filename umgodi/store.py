@@ -777,24 +777,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 			return False
 
 		try:
-			data = json.loads(content)
-			if not isinstance(data, list):
-				raise PitCorruptError(f"Pit snapshot in {self.canonical_file} must be a JSON array.")
-
-			candidate: dict[str, PitItems] = {}
-			for history_entry in data:
-				if not isinstance(history_entry, list):
-					continue
-				fragments: list[PitItem] = []
-				key: str | None = None
-				for raw_frag in history_entry:
-					if isinstance(raw_frag, dict):
-						frag = PitItem(raw_frag, invalidate=False)
-						fragments.append(frag)
-						if not key:
-							key = frag.id
-				if key:
-					candidate[key] = PitItems(key, fragments, self.default_max_count)
+			candidate = self._parse_canonical_snapshot(content)
 
 			with self._locker:
 				self.flush_live_items()
@@ -815,6 +798,27 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 			if isinstance(ex, PitCorruptError):
 				raise
 			raise PitCorruptError(f"Failed to parse pit file {self.canonical_file}: {ex}") from ex
+
+	def _parse_canonical_snapshot(self, content: str) -> dict[str, PitItems]:
+		data = json.loads(content)
+		if not isinstance(data, list):
+			raise PitCorruptError(f"Pit snapshot in {self.canonical_file} must be a JSON array.")
+
+		candidate: dict[str, PitItems] = {}
+		for history_entry in data:
+			if not isinstance(history_entry, list):
+				continue
+			fragments: list[PitItem] = []
+			key: str | None = None
+			for raw_frag in history_entry:
+				if isinstance(raw_frag, dict):
+					frag = PitItem(raw_frag, invalidate=False)
+					fragments.append(frag)
+					if not key:
+						key = frag.id
+			if key:
+				candidate[key] = PitItems(key, fragments, self.default_max_count)
+		return candidate
 
 	def seed_from_file(self, file_path: InqEntry | str, require_existing: bool = False) -> int:
 		"""
@@ -986,7 +990,6 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 		"""Writes the complete point-in-time snapshot to <PitName>.pit."""
 		dirty_frags: list[PitItem] = []
 		model: list[list[dict[str, Any]]] = []
-		snapshot_change_time = datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
 
 		for key in sorted(self._historic_items.keys()):
 			pit_items = self._historic_items[key]
@@ -995,8 +998,6 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 				history_list.append(frag.to_dict())
 				if not frag.is_valid():
 					dirty_frags.append(frag)
-				if frag.modified > snapshot_change_time:
-					snapshot_change_time = frag.modified
 			model.append(history_list)
 
 		if not dirty_frags and not force and self.canonical_file.is_file():
@@ -1011,14 +1012,9 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 		# CR022 in-place sibling write
 		safe_write_in_place(self.canonical_file, raw_json)
 
-		if not self.unflagged:
-			change_time = (
-				utcnow()
-				if snapshot_change_time == datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
-				else snapshot_change_time
-			)
-			self.master_flag.update(time=change_time, originator=self.exact_process_identity)
-			self.process_flag.update(time=change_time)
+		if not self.unflagged and self.master_flag.originator == self.exact_process_identity:
+			publication = self.master_flag.update(originator=self.exact_process_identity)
+			self.process_flag.update(time=publication.time)
 
 		# Mark all included fragments as clean
 		for frag in dirty_frags:
@@ -1105,17 +1101,83 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 
 			# If master, persist merged state and manage cleanup receipts
 			if not self.read_only and self.try_acquire_master():
-				self._store_canonical(force=True)
-				now = utcnow()
-				for cf, _ in merged_entries:
-					receipt = ReceiptFile(cf)
-					if receipt.is_eligible_for_cleanup:
-						safe_delete_file(cf)
-						receipt.remove()
+				result = PitMaintenanceResult(str(self.canonical_file), applied=True)
+				self._persist_and_receipt_changes(merged_entries, result)
+				if result.failures:
+					raise OSError(result.failures[0])
 
 		return merged_count
 
 	# --- Maintenance & Cleanup (CR021/CR022) ---
+
+	def _is_current_exact_master(self) -> bool:
+		return self.unflagged or self.master_flag.is_owned_by(self.exact_process_identity)
+
+	def _persist_and_receipt_changes(
+		self, merged_files: list[tuple[InqEntry, list[Any]]], result: PitMaintenanceResult,
+	) -> None:
+		if not merged_files:
+			return
+		try:
+			snapshot = self._read_cleanup_snapshot()
+			if any(not self._canonical_accounts_for(snapshot, payload) for _, payload in merged_files):
+				result.canonical_persisted = self._store_canonical(force=True)
+				snapshot = self._read_cleanup_snapshot()
+		except (OSError, ValueError, PitCorruptError) as exc:
+			result.failures.append(f"Could not persist or verify canonical snapshot: {exc}")
+			return
+		for cf, payload in merged_files:
+			if ChangeFile.try_parse_name(cf.stem) is None:
+				continue
+			if not self._canonical_accounts_for(snapshot, payload):
+				result.deferred.append(f"Canonical pit does not yet account for {cf.name}")
+				continue
+			try:
+				existed = ReceiptFile.path_for(cf).is_file()
+				receipt = ReceiptFile(cf)
+				result.receipts_observed += int(existed)
+				result.receipts_created += int(not existed)
+				result.receipts_retained += 1
+				if not receipt.is_eligible_for_cleanup:
+					continue
+				result.change_files_eligible += 1
+				if not self.canonical_file.is_file() or not self._is_current_exact_master():
+					result.deferred.append(f"Cleanup revalidation deferred {cf.name}")
+					continue
+				if not safe_delete_file(cf):
+					result.failures.append(f"Change file remained after removal: {cf.name}")
+					continue
+				result.change_files_removed += 1
+				if receipt.remove():
+					result.receipts_removed += 1
+				else:
+					result.failures.append(f"Receipt remained after removal: {receipt.path.name}")
+			except (OSError, ValueError) as exc:
+				result.receipts_malformed += 1
+				result.deferred.append(f"Receipt is not currently valid: {cf.name}: {exc}")
+
+	def _read_cleanup_snapshot(self) -> dict[str, PitItems]:
+		if not self.canonical_file.is_file():
+			return {}
+		content = safe_read_text(self.canonical_file)
+		if not content or not content.strip():
+			raise PitCorruptError(f"Cannot read canonical file {self.canonical_file}")
+		return self._parse_canonical_snapshot(content)
+
+	@staticmethod
+	def _canonical_accounts_for(snapshot: dict[str, PitItems], payload: list[Any]) -> bool:
+		for entry in payload:
+			rows = entry if isinstance(entry, list) else [entry]
+			if not rows:
+				return False
+			for raw in rows:
+				if not isinstance(raw, dict) or "Id" not in raw:
+					return False
+				fragment = PitItem(raw, invalidate=False)
+				history = snapshot.get(fragment.id)
+				if history is None or history.push(fragment).history != history.history:
+					return False
+		return bool(payload)
 
 	def maintain(
 		self,
@@ -1197,27 +1259,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 			if options.apply:
 				result.current_master = not self.read_only and self.try_acquire_master()
 				if result.current_master:
-					if merged_files:
-						self._store_canonical(force=True)
-						result.canonical_persisted = True
-
-					for cf, _ in merged_files:
-						receipt_path = cf.with_suffix(".receipt")
-						existed = receipt_path.is_file()
-						try:
-							receipt = ReceiptFile(cf)
-							result.receipts_observed += 1 if existed else 0
-							result.receipts_created += 0 if existed else 1
-							result.receipts_retained += 1
-							if receipt.is_eligible_for_cleanup:
-								result.change_files_eligible += 1
-								safe_delete_file(cf)
-								result.change_files_removed += 1
-								receipt.remove()
-								result.receipts_removed += 1
-						except Exception as ex:
-							result.receipts_malformed += 1
-							result.deferred.append(f"Receipt is not currently valid: {receipt_path.name}: {ex}")
+					self._persist_and_receipt_changes(merged_files, result)
 
 					# Inspect orphan receipts whose change file is missing
 					for rf_path in sorted(self.pit_dir.glob("*.receipt"), key=lambda p: p.name):
@@ -1226,7 +1268,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 							result.receipts_observed += 1
 							try:
 								orphan_receipt = ReceiptFile(cf_path)
-								if orphan_receipt.is_eligible_for_cleanup:
+								if orphan_receipt.is_eligible_for_cleanup and self._is_current_exact_master():
 									orphan_receipt.remove()
 									result.receipts_removed += 1
 								else:

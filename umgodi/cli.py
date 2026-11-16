@@ -1024,7 +1024,8 @@ def cmd_maintain(args: argparse.Namespace) -> int:
 			cloud=cloud,
 			root=root,
 			read_only=(not apply),
-			unflagged=True,
+			unflagged=(not apply),
+			subscriber="jpit",
 			autoload=False,
 		) as pit:
 			res = pit.maintain(options)
