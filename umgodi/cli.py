@@ -1155,7 +1155,7 @@ def get_cloud_options_description(use_color: bool = True) -> str:
 
 
 def print_banner(use_color: bool = True) -> None:
-	for line in help_style.banner(f"{Icons.INFO} umgodi CLI (jpit v{__version__}) on {platform.node()}", use_color):
+	for line in help_style.banner(f"{Icons.INFO} {get_cli_prog_name()} CLI (v{__version__}) on {platform.node()}", use_color):
 		print(line)
 
 
@@ -1169,6 +1169,7 @@ def print_top_help(
 ) -> None:
 	if not nologo:
 		print_banner(use_color=use_color)
+	prog = get_cli_prog_name()
 	commands_spec = [
 		("grep", "<pattern> [<target>] [-i] [-e] [-p <prop>] [--at <ts>] [--json] [--jq <expr>]"),
 		("get", "<PitName> <ItemId> [--at <ts>] [--jq <expr>] [--with-deleted]"),
@@ -1186,7 +1187,7 @@ def print_top_help(
 	]
 	items = [help_style.Row("Commands:", Icons.INFO,
 		"grep, get, history, list, put, set, del, del-prop, rename, export, status, maintain, audit")]
-	items.extend(help_style.Row(f"  jpit {cmd} {spec}", "", "") for cmd, spec in commands_spec)
+	items.extend(help_style.Row(f"  {prog} {cmd} {spec}", "", "") for cmd, spec in commands_spec)
 	items.extend([
 		help_style.Row("Options:", "", ""),
 		help_style.Row("-h, --help", Icons.HELP, "print out all options"),
@@ -1221,7 +1222,7 @@ def print_top_help(
 		items.extend([
 			help_style.Row("Pit argument:", "", ""),
 			help_style.Row("", Icons.INFO, "positional argument: select one pit for the chosen command"),
-			help_style.Row("", Icons.INFO, f"e.g. 'jpit seed {pit_name} --source patch.json5 -r <root>' seeds {pit_name} from patch.json5"),
+			help_style.Row("", Icons.INFO, f"e.g. '{prog} seed {pit_name} --source patch.json5 -r <root>' seeds {pit_name} from patch.json5"),
 		])
 
 	for line in help_style.rows(items, use_color):
@@ -1272,7 +1273,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 
 	help_data: dict[str, dict[str, Any]] = {
 		"grep": {
-			"usage": "jpit grep <pattern> [<target>] [options]",
+			"usage": "<pattern> [<target>] [options]",
 			"desc": "Ripgrep-style living state semantic search across pits.",
 			"args": [
 				("pattern", "Text or regex to match"),
@@ -1289,7 +1290,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 		},
 		"get": {
-			"usage": "jpit get <PitName> <ItemId> [options]",
+			"usage": "<PitName> <ItemId> [options]",
 			"desc": "Get entity projected state.",
 			"args": [
 				("PitName", "Pit name or file path"),
@@ -1302,7 +1303,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 		},
 		"history": {
-			"usage": "jpit history <PitName> <ItemId> [options]",
+			"usage": "<PitName> <ItemId> [options]",
 			"desc": "Dump immutable fragment history for an entity.",
 			"args": [
 				("PitName", "Pit name or file path"),
@@ -1313,7 +1314,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 		},
 		"list": {
-			"usage": "jpit list -r <tenant|path> [-c <cloud>] [-a|--all] [-l|--long] [<PitName>] [--json] [--jq <expr>]",
+			"usage": "-r <tenant|path> [-c <cloud>] [-a|--all] [-l|--long] [<PitName>] [--json] [--jq <expr>]",
 			"desc": "List active entities in a Pit, or available pits in -r root if <PitName> is omitted.",
 			"args": [
 				("PitName", "Pit name or file path (optional)"),
@@ -1324,7 +1325,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 		},
 		"put": {
-			"usage": "jpit put <PitName> [<source>] [-s <source>] [--id-exists] [--patch] [options]",
+			"usage": "<PitName> [<source>] [-s <source>] [--id-exists] [--patch] [options]",
 			"desc": "Ingest JSON5 entities from file or stdin pipe (alias: seed).",
 			"args": [
 				("PitName", "Pit name or file path"),
@@ -1338,7 +1339,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			"aliases": ["seed"],
 		},
 		"set": {
-			"usage": "jpit set <PitName> <ItemId> <payload> [options]",
+			"usage": "<PitName> <ItemId> <payload> [options]",
 			"desc": "Set or patch entity with JSON5 payload.",
 			"args": [
 				("PitName", "Pit name or file path"),
@@ -1348,7 +1349,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			"opts": [],
 		},
 		"del": {
-			"usage": "jpit del <PitName> <ItemId> [--by <author>] [options]",
+			"usage": "<PitName> <ItemId> [--by <author>] [options]",
 			"desc": "Tombstone an entity (aliases: delete-item, delete).",
 			"args": [
 				("PitName", "Pit name or file path"),
@@ -1360,7 +1361,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			"aliases": ["delete-item", "delete"],
 		},
 		"del-prop": {
-			"usage": "jpit del-prop <PitName> <ItemId> <PropertyPath> [options]",
+			"usage": "<PitName> <ItemId> <PropertyPath> [options]",
 			"desc": "Tombstone a property path (alias: delete-property).",
 			"args": [
 				("PitName", "Pit name or file path"),
@@ -1371,7 +1372,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			"aliases": ["delete-property"],
 		},
 		"rename": {
-			"usage": "jpit rename <PitName> <OldId> <NewId> [--by <author>] [options]",
+			"usage": "<PitName> <OldId> <NewId> [--by <author>] [options]",
 			"desc": "Migrate entity to new ID and tombstone old ID.",
 			"args": [
 				("PitName", "Pit name or file path"),
@@ -1383,7 +1384,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 		},
 		"export": {
-			"usage": "jpit export (<PitName>|--wwwa) (--out-dir <dir>|--json) [--at <ISO-8601 timestamp>] [options]",
+			"usage": "(<PitName>|--wwwa) (--out-dir <dir>|--json) [--at <ISO-8601 timestamp>] [options]",
 			"desc": "Export entities as JSON array.",
 			"args": [
 				("PitName", "Pit name or file path"),
@@ -1397,7 +1398,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 		},
 		"status": {
-			"usage": "jpit status <PitName> [options]",
+			"usage": "<PitName> [options]",
 			"desc": "Inspect Pit directory lease and flags.",
 			"args": [
 				("PitName", "Pit name or file path"),
@@ -1405,7 +1406,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			"opts": [],
 		},
 		"maintain": {
-			"usage": "jpit maintain (<PitName> | --wwwa) [--apply] [--prune-process-flags --older-than <dur>] [--repair-legacy-extensions] [--archive-events] [--json] [options]",
+			"usage": "(<PitName> | --wwwa) [--apply] [--prune-process-flags --older-than <dur>] [--repair-legacy-extensions] [--archive-events] [--json] [options]",
 			"desc": "Inspect or reconcile changes, receipts, expired process flags, and event archives.",
 			"args": [
 				("PitName", "Pit name or file path (optional if --wwwa is used)"),
@@ -1421,7 +1422,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 		},
 		"audit": {
-			"usage": "jpit audit (<PitName> | --wwwa) [--machine <all|local|name>] [--level <severity>] [--json] [options]",
+			"usage": "(<PitName> | --wwwa) [--machine <all|local|name>] [--level <severity>] [--json] [options]",
 			"desc": "Read-only audit of durable JsonPit recovery events without acquiring leases or flags.",
 			"args": [
 				("PitName", "Pit name or file path (optional if --wwwa is used)"),
@@ -1440,9 +1441,11 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 		print_top_help(nologo=nologo, use_color=use_color)
 		return
 
-	print(help_style.syntax("Usage: " + info["usage"].replace(" | ", "|"), enabled=use_color))
-	if canonical_cmd in ("list", "ls"):
-		print(help_style.syntax("       " + info["usage"].replace("jpit list", "jpit ls"), enabled=use_color))
+	prog = get_cli_prog_name()
+	usage = info["usage"].replace(" | ", "|")
+	print(help_style.syntax(f"Usage: {prog} {canonical_cmd} {usage}", enabled=use_color))
+	if canonical_cmd == "list":
+		print(help_style.syntax(f"       {prog} ls {usage}", enabled=use_color))
 	print(help_style.syntax(info["desc"], enabled=use_color))
 	items = []
 	if info["args"]:
@@ -1477,6 +1480,7 @@ def print_retain_window_help(nologo: bool = False, use_color: bool = True) -> No
 	if not nologo:
 		print_banner(use_color=use_color)
 
+	prog = get_cli_prog_name()
 	opt_name = help_style.syntax("-w, --window", enabled=use_color)
 	sys.stdout.write(f"{color('Option:', C_BOLD + C_CYAN, use_color)}    {opt_name}\n")
 	sys.stdout.write(f"{color('Type:', C_BOLD + C_CYAN, use_color)}      Boolean flag (default: False)\n\n")
@@ -1486,10 +1490,10 @@ def print_retain_window_help(nologo: bool = False, use_color: bool = True) -> No
 
 	sys.stdout.write(f"{color('Lifecycle & Behavior:', C_BOLD + C_GREEN, use_color)}\n")
 	sys.stdout.write(
-		"  By default, every finite jpit operation registers an ephemeral process activity flag\n"
+		f"  By default, every finite {prog} operation registers an ephemeral process activity flag\n"
 		"  ({Machine}-{Process}-{PID}.flag) during execution to announce its presence across cloud\n"
 		"  drives, and cleanly self-deletes its flag upon process exit (CR024).\n\n"
-		"  When --window is specified, jpit deliberately preserves the owned activity flag\n"
+		f"  When --window is specified, {prog} deliberately preserves the owned activity flag\n"
 		"  on disk upon exit, leaving it active until its 60-second lease window expires naturally.\n"
 		"  (Retained for backward compatibility; scheduled for retirement in the next major release).\n\n"
 	)

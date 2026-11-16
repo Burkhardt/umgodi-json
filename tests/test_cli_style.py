@@ -1,8 +1,11 @@
 import contextlib
 import io
 import re
+import sys
 
-from umgodi import cli_style as style
+import pytest
+
+from umgodi import __version__, cli_style as style
 from umgodi.cli import main
 from umgodi.icons import Icons
 
@@ -43,7 +46,7 @@ def test_nested_syntax_and_uniform_switches() -> None:
 
 
 def test_banner_and_glyph_groups() -> None:
-	title = f"{Icons.INFO} umgodi CLI (jpit v1.2.3)"
+	title = f"{Icons.INFO} umgodi CLI (v1.2.3)"
 	assert strip(style.banner(title, True)[1]) == title
 	assert all(bold for _, _, bold in cells(style.banner(title, True)[1]))
 	long_title = Icons.INFO + " " + "x" * 80
@@ -120,3 +123,20 @@ def test_list_alias_is_advertised_only_in_contextual_help() -> None:
 		with contextlib.redirect_stdout(output): assert main([command, "-h", "-n"]) == 0
 		assert "Usage: jpit list" in output.getvalue()
 		assert "       jpit ls" in output.getvalue()
+
+
+@pytest.mark.parametrize(("prog", "other"), [("umgodi", "jpit"), ("jpit", "umgodi")])
+def test_help_uses_invoked_command(prog, other, monkeypatch, capsys) -> None:
+	monkeypatch.setattr(sys, "argv", [prog])
+	for args, expected in [
+		(["-h"], f"{prog} CLI (v{__version__}) on "),
+		(["Activity", "-h"], f"'{prog} seed Activity "),
+		(["ls", "-h"], f"{prog} ls "),
+		(["help", "seed"], f"Usage: {prog} put "),
+		(["--retain-window", "-h"], f"every finite {prog} operation"),
+	]:
+		assert main(args) == 0
+		output = capsys.readouterr().out
+		assert expected in output
+		# Only match command names, excluding repository names in documentation URLs.
+		assert not re.search(rf"\b{other} ", output)
