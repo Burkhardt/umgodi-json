@@ -2,9 +2,39 @@
   <img src="https://raw.githubusercontent.com/Burkhardt/umgodi-json/main/assets/umgodi-json-sync.svg" width="180" height="180" alt="Umgodi JSON Sync Logo" />
 </p>
 
-# umgodi
+# umgodi-json
 
 Distributed JSON storage with immutable history across synchronized cloud drives.
+
+## Why `umgodi-json`?
+
+`umgodi-json` is the continuing Python line of the RAIkeep distributed JSON
+store. It is the successor to the project previously published as
+`jsonpit-python` and distributed as `jsonpit`. The old Python project name is
+frozen; active Python development continues here under the new name
+`umgodi-json`, with the import package and commands named `umgodi`.
+
+The `jpit` CLI remains an actively developed command-line interface. Install
+the new distribution with `pip install umgodi-json`; existing `jsonpit` 4.6.3
+installations remain available as the frozen predecessor.
+
+`umgodi-json` inherits its design and storage compatibility from the C#
+`JsonPit` project, available on [GitHub](https://github.com/Burkhardt/JsonPit)
+and [NuGet](https://www.nuget.org/packages/JsonPit/). The C# and Python lines
+are intended to evolve in sync for the foreseeable future.
+
+The Python names are intentionally distinct: `inqaba` is the maintained
+RaiKeep Python framework used heavily by Umgodi for paths, files, configuration,
+and related boundaries; `vikela` is the companion Python linter that provides
+guardrails for using those opinionated framework APIs safely. Both projects
+are recommended for application and agent code built on Umgodi.
+
+The Zulu names express the Python line's connection to Ubuntu—both as an idea
+of shared human infrastructure and as a target operating-system family. The
+packages are not Linux-only: we test on macOS and Windows as well as Linux
+distributions. The complete test suite includes unit, cross-engine, and
+selected remote-over-SSH scenarios, providing practical confidence in the
+storage and synchronization behavior.
 
 JsonPit change requests and release notes are centralized in the RAIkeep [`doc/`](https://github.com/Burkhardt/RAIkeep/tree/main/doc) directory under `JsonPit_...` filenames; they are not stored separately in this child repository.
 
@@ -41,7 +71,10 @@ therefore still append a fragment; distributed ordering and tombstones are prese
 
 ## Latest Version 4.6.4
 
-The active Python implementation of JsonPit is now distributed as `umgodi-json`. It uses Inqaba for paths, files, and shared configuration.
+The active Python distributed-persistence implementation is now distributed as
+`umgodi-json`. It uses Inqaba for paths, files, and shared configuration; its
+JsonPit-compatible heritage is described above rather than hidden behind the
+old project name.
 
 Without `-c`, `jpit export Object -r AfricaStage --out-dir ./exports` resolves
 the bare tenant name beneath the configured default cloud, matching `status`.

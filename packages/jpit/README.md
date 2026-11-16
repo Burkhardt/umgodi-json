@@ -1,7 +1,9 @@
-# jpit (v4.6.3)
+# jpit (v4.6.4)
 
-`jpit` is the companion distribution for [jsonpit](https://pypi.org/project/jsonpit/).
-It depends on the matching library version and exposes the `jpit` and `jsonpit` commands.
+`jpit` is the actively maintained command-line interface for
+[`umgodi-json`](https://pypi.org/project/umgodi-json/), the successor to the
+frozen `jsonpit-python` / `jsonpit` Python project. It depends on the matching
+Umgodi library version and exposes the continuing `jpit` and `umgodi` commands.
 Python 3.12 or newer is required.
 
 ## Installation
@@ -9,24 +11,24 @@ Python 3.12 or newer is required.
 For a new CLI installation, use one pipx environment:
 
 ```bash
-pipx install "jsonpit==4.6.3"
+pipx install "umgodi-json==4.6.4"
 jpit --version
-jsonpit --version
+umgodi --version
 ```
 
-To upgrade, run `pipx upgrade jsonpit`. Both commands include the `v` prefix in
-their version output, for example `jpit v4.6.3`. These installation commands
+To upgrade, run `pipx upgrade umgodi-json`. Both commands include the `v` prefix in
+their version output, for example `jpit v4.6.4`. These installation commands
 apply after publication.
 
 If both distributions were installed into separate pipx environments:
 
 ```bash
-pipx uninstall jpit
-pipx install --force "jsonpit==4.6.3"
+pipx uninstall umgodi-json
+pipx install --force "umgodi-json==4.6.4"
 ```
 
 Use a virtual environment to embed the library in a Python application. Do not
 bypass the operating system's externally managed Python protection.
 
-See the [Getting Started guide](https://github.com/Burkhardt/jsonpit-python/blob/main/GettingStarted.md)
-and [API reference](https://github.com/Burkhardt/jsonpit-python/blob/main/API.md).
+See the [Getting Started guide](https://github.com/Burkhardt/umgodi-json/blob/main/GettingStarted.md)
+and [API reference](https://github.com/Burkhardt/umgodi-json/blob/main/API.md).
