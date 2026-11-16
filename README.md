@@ -4,24 +4,29 @@
 
 # umgodi-json
 
-Distributed JSON storage with immutable history across synchronized cloud drives.
+**Umgodi** is RAIkeep's actively developed Python library for distributed JSON
+storage with immutable history across synchronized cloud drives. Install the
+`umgodi-json` package, import `umgodi`, and use the continuing `jpit` command
+to seed, export, inspect, and maintain synchronized data.
 
 ## Why `umgodi-json`?
 
-`umgodi-json` is the continuing Python line of the RAIkeep distributed JSON
-store. It is the successor to the project previously published as
-`jsonpit-python` and distributed as `jsonpit`. The old Python project name is
-frozen; active Python development continues here under the new name
-`umgodi-json`, with the import package and commands named `umgodi`.
+`umgodi-json` is the current Python project. It replaces the historical
+`jsonpit-python` project and its `jsonpit` distribution, which are now frozen.
+The implementation continues the same storage contract under a new name so
+the Python identity is clear and distinct from the C# project that originated
+the design.
 
 The `jpit` CLI remains an actively developed command-line interface. Install
 the new distribution with `pip install umgodi-json`; existing `jsonpit` 4.6.3
 installations remain available as the frozen predecessor.
 
-`umgodi-json` inherits its design and storage compatibility from the C#
-`JsonPit` project, available on [GitHub](https://github.com/Burkhardt/JsonPit)
-and [NuGet](https://www.nuget.org/packages/JsonPit/). The C# and Python lines
-are intended to evolve in sync for the foreseeable future.
+Umgodi inherits its design and storage compatibility from the C# `JsonPit`
+project, available on [GitHub](https://github.com/Burkhardt/JsonPit) and
+[NuGet](https://www.nuget.org/packages/JsonPit/). `JsonPit` is the heritage
+and cross-engine reference; **Umgodi is the Python library you install and
+use**. The C# and Python lines are intended to evolve in sync for the
+foreseeable future.
 
 The Python names are intentionally distinct: `inqaba` is the maintained
 RaiKeep Python framework used heavily by Umgodi for paths, files, configuration,
