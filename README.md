@@ -4,6 +4,8 @@
 
 # umgodi-json
 
+[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md)
+
 **Umgodi** is RAIkeep's actively developed Python library for distributed JSON
 storage with immutable history across synchronized cloud drives. Install the
 `umgodi-json` package, import `umgodi`, and use the continuing `jpit` command

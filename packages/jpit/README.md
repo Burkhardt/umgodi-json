@@ -1,5 +1,7 @@
 # jpit (v4.6.5)
 
+[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md)
+
 `jpit` is the actively maintained command-line interface for
 [`umgodi-json`](https://pypi.org/project/umgodi-json/), the successor to the
 frozen `jsonpit-python` / `jsonpit` Python project. It depends on the matching
