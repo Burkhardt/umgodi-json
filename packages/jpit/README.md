@@ -1,6 +1,6 @@
-# jpit (v4.6.5)
+# jpit (v4.6.6)
 
-[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md)
+[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md) · SignPath Foundation application in preparation; signing is not yet active.
 
 `jpit` is the actively maintained command-line interface for
 [`umgodi-json`](https://pypi.org/project/umgodi-json/), the successor to the
@@ -13,20 +13,20 @@ Python 3.12 or newer is required.
 For a new CLI installation, use one pipx environment:
 
 ```bash
-pipx install "umgodi-json==4.6.5"
+pipx install "umgodi-json==4.6.6"
 jpit --version
 umgodi --version
 ```
 
 To upgrade, run `pipx upgrade umgodi-json`. Both commands include the `v` prefix in
-their version output, for example `jpit v4.6.5`. These installation commands
+their version output, for example `jpit v4.6.6`. These installation commands
 apply after publication.
 
 If both distributions were installed into separate pipx environments:
 
 ```bash
 pipx uninstall umgodi-json
-pipx install --force "umgodi-json==4.6.5"
+pipx install --force "umgodi-json==4.6.6"
 ```
 
 Use a virtual environment to embed the library in a Python application. Do not

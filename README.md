@@ -4,7 +4,7 @@
 
 # umgodi-json
 
-[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md)
+[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md) · SignPath Foundation application in preparation; signing is not yet active.
 
 **Umgodi** is RAIkeep's actively developed Python library for distributed JSON
 storage with immutable history across synchronized cloud drives. Install the
@@ -76,7 +76,7 @@ not against the projected state. A sparse patch matching projected values may
 therefore still append a fragment; distributed ordering and tombstones are preserved.
 
 
-## Latest Version 4.6.5
+## Latest Version 4.6.6
 
 The active Python distributed-persistence implementation is now distributed as
 `umgodi-json`. It uses Inqaba for paths, files, and shared configuration; its
@@ -95,7 +95,7 @@ snapshot is absent. It emits no JSON or success receipt and leaves existing
 export files intact. `--wwwa` requires all four snapshots; a valid existing
 empty snapshot still exports `[]` successfully.
 
-Latest release notes: [coordinated RAIkeep release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/umgodi-json_RELEASE_NOTES_4.x.md#465).
+Latest release notes: [coordinated RAIkeep release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/umgodi-json_RELEASE_NOTES_4.x.md#466).
 
 ## Previous Versions
 
@@ -135,7 +135,7 @@ Python 3.12 or newer is required.
 Install one environment for both commands:
 
 ```bash
-pipx install "umgodi-json==4.6.5"
+pipx install "umgodi-json==4.6.6"
 jpit --version
 umgodi --version
 ```
@@ -146,7 +146,7 @@ To upgrade:
 pipx upgrade umgodi-json
 ```
 
-The expected outputs are `jpit v4.6.5` and `umgodi v4.6.5`. Both commands come from the same distribution.
+The expected outputs are `jpit v4.6.6` and `umgodi v4.6.6`. Both commands come from the same distribution.
 
 On Ubuntu/Debian, install pipx with `sudo apt install pipx` if needed. On macOS,
 use `brew install pipx`. Run `pipx ensurepath` and start a new shell if the commands
@@ -158,7 +158,7 @@ are not on PATH. System Python may reject direct pip installation with
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install "umgodi-json==4.6.5"
+python -m pip install "umgodi-json==4.6.6"
 ```
 
 Use `import umgodi` in Python. Existing `jsonpit` environments can continue using the frozen 4.6.3 release.

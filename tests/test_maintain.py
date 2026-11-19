@@ -13,6 +13,8 @@ import json
 from pathlib import Path
 import tempfile
 
+import pytest
+
 from umgodi.canonical import format_iso_timestamp, utcnow
 from umgodi.changes import ChangeFile, ReceiptFile
 from umgodi.cli import cmd_maintain, main, parse_duration
@@ -375,6 +377,54 @@ def test_maintain_wwwa_cloud_not_hijacked_by_local_cwd_directory() -> None:
 		finally:
 			os.chdir(orig_cwd)
 			OsConfig.reset()
+
+
+@pytest.mark.parametrize("age", [datetime.timedelta(minutes=5), datetime.timedelta(days=8)])
+def test_historical_save_publishes_current_lease_without_changing_history(tmp_path, age):
+	directory = tmp_path / "HistoricalSave"
+	directory.mkdir()
+	old = utcnow() - age
+	with Pit.open(directory, autoload=False) as pit:
+		pit.add_historical(PitItem({"Id": "Past", "Modified": format_iso_timestamp(old)}, invalidate=False))
+		reader_checkpoint = utcnow() - datetime.timedelta(seconds=2)
+		before_save = utcnow()
+		pit.save(force=True)
+
+		master = MasterFlagFile(directory)
+		assert master.is_owned_by(pit.exact_process_identity)
+		assert not master.is_expired
+		assert before_save <= master.time <= utcnow()
+		assert master.time == pit.process_flag.time
+		assert master.time > reader_checkpoint > old
+		assert pit["Past"].modified == old
+		data = json.loads(pit.canonical_file.read_text())
+		assert data[0][0]["Modified"] == format_iso_timestamp(old)
+
+
+def test_jpit_maintain_historical_store_retires_elapsed_receipt(tmp_path, capsys):
+	directory = tmp_path / "HistoricalCli"
+	directory.mkdir()
+	old = format_iso_timestamp(utcnow() - datetime.timedelta(days=8))
+	first = PitItem({"Id": "First", "Modified": old}, invalidate=False)
+	change = ChangeFile.create(directory, first, "Peer-app-42")
+	with Pit.open(directory, unflagged=True, autoload=False) as fixture:
+		assert fixture.maintain(apply=True).receipts_created == 1
+		receipt = change.with_suffix(".receipt")
+		receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
+		second = PitItem({"Id": "Second", "Modified": old}, invalidate=False)
+		pending = ChangeFile.create(directory, second, "Peer-app-42")
+
+	assert main(["maintain", "HistoricalCli", "-r", str(tmp_path), "--apply", "--json"]) == 0
+	result = json.loads(capsys.readouterr().out)
+	assert result["CurrentMaster"] and result["CanonicalPersisted"]
+	assert result["ChangeFilesRemoved"] == result["ReceiptsRemoved"] == 1
+	assert result["Deferred"] == result["Failures"] == []
+	assert not change.exists() and not receipt.exists()
+	assert pending.is_file() and pending.with_suffix(".receipt").is_file()
+	assert not MasterFlagFile(directory).is_expired
+	data = json.loads((directory / "HistoricalCli.pit").read_text())
+	assert {fragment["Id"] for history in data for fragment in history} == {"First", "Second"}
+	assert all(fragment["Modified"] == old for history in data for fragment in history)
 
 
 def test_historical_store_renews_lease_and_retires_accounted_changes(tmp_path) -> None:

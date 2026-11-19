@@ -1,8 +1,8 @@
-# Getting Started with Python umgodi-json (v4.6.5)
+# Getting Started with Python umgodi-json (v4.6.6)
 
 This guide provides a practical walkthrough for using **`umgodi`** from Python—either embedded as a library in your services, AI agent frameworks, and data pipelines, or as the standalone **`jpit`** CLI for command-line workflows.
 
-It is based on `umgodi` v4.6.5, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+It is based on `umgodi` v4.6.6, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
 
 ---
 
@@ -28,16 +28,16 @@ It is based on `umgodi` v4.6.5, featuring 100% lockstep parity with C# `JsonPit`
 For the CLI, install one pipx environment that supplies both commands:
 
 ```bash
-pipx install "umgodi-json==4.6.5"
+pipx install "umgodi-json==4.6.6"
 # For an existing environment:
 pipx upgrade umgodi-json
 jpit --version
 umgodi --version
 ```
 
-The outputs are `jpit v4.6.5` and `umgodi v4.6.5`. If a separate `jpit` pipx
+The outputs are `jpit v4.6.6` and `umgodi v4.6.6`. If a separate `jpit` pipx
 environment already exists, run `pipx uninstall jpit`, followed by
-`pipx install --force "umgodi-json==4.6.5"` to restore both command links.
+`pipx install --force "umgodi-json==4.6.6"` to restore both command links.
 
 Ubuntu/Debian and Homebrew may reject system-wide pip installs as externally
 managed. Use pipx for the CLI, or an isolated virtual environment for library use:
@@ -45,7 +45,7 @@ managed. Use pipx for the CLI, or an isolated virtual environment for library us
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install "umgodi-json==4.6.5"
+python -m pip install "umgodi-json==4.6.6"
 ```
 
 ---
