@@ -32,7 +32,9 @@ def test_variables_cannot_escape_owned_root(tmp_path, variables):
 	with pytest.raises(ValueError): suite_variables({"Variables": variables}, str(tmp_path))
 
 
-def test_all_shipped_suites_resolve_inside_owned_root(tmp_path):
+def test_all_shipped_suites_resolve_inside_owned_root(tmp_path, monkeypatch):
+	config = InqConfig({"TestCloud": "Dropbox", "Cloud": {"Dropbox": str(tmp_path)}})
+	monkeypatch.setattr(InqConfig, "load", lambda: config)
 	for source in (Path(__file__).parent / "suites").glob("*.json5"):
 		data = loads_json5(source.read_text())
 		variables = suite_variables(data, str(tmp_path))
