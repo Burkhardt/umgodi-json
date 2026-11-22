@@ -16,9 +16,9 @@
 			Name: "1. Create Base Pit via Python",
 			Steps: [
 				{
-					Command: "jpit -r {RootName} set Activity Act1 '{Type: \"Task\", Status: \"InProgress\"}'",
+					Command: "echo '{Id: \"Act1\", Type: \"Task\", Status: \"InProgress\"}' | jpit add Activity --source - -r {PitRoot}",
 					ExpectCode: 0,
-					ExpectStdoutContains: "Updated entity 'Act1' in Pit 'Activity'"
+					ExpectStdoutContains: "1 written, 0 unchanged"
 				},
 				{
 					Command: "pits export Activity -r {PitRoot} --json -n",
@@ -31,7 +31,7 @@
 			Name: "2. Plant Loose Recovery Events in Events Directory",
 			Steps: [
 				{
-					Command: "python3 -c \"import json, uuid; from pathlib import Path; from jsonpit.canonical import parse_iso_timestamp, datetime_to_utc_ticks, format_iso_timestamp, canonical_json, sha256_hex; ev_dir = Path('{PitRoot}/Activity/Events'); ev_dir.mkdir(parents=True, exist_ok=True); t1 = parse_iso_timestamp('2026-09-20T10:00:00Z'); t2 = parse_iso_timestamp('2026-09-20T11:30:00Z'); \nfor t, msg in [(t1, 'first recovery event'), (t2, 'second recovery event')]:\n    ticks = datetime_to_utc_ticks(t)\n    content = canonical_json({'EventId': str(uuid.uuid4()), 'UtcTime': format_iso_timestamp(t), 'UtcTicks': ticks, 'Stage': 'Completed', 'Message': msg, 'Originator': 'TestMachine-tests-1'})\n    sha = sha256_hex(content)\n    (ev_dir / f'{ticks}_TestMachine-tests-1_Completed_{sha}.event').write_text(content, encoding='utf-8')\"",
+					Command: "python3 -c \"import json, uuid; from pathlib import Path; from umgodi.canonical import parse_iso_timestamp, datetime_to_utc_ticks, format_iso_timestamp, canonical_json, sha256_hex; ev_dir = Path('{PitRoot}/Activity/Events'); ev_dir.mkdir(parents=True, exist_ok=True); t1 = parse_iso_timestamp('2026-09-20T10:00:00Z'); t2 = parse_iso_timestamp('2026-09-20T11:30:00Z'); \nfor t, msg in [(t1, 'first recovery event'), (t2, 'second recovery event')]:\n    ticks = datetime_to_utc_ticks(t)\n    content = canonical_json({'EventId': str(uuid.uuid4()), 'UtcTime': format_iso_timestamp(t), 'UtcTicks': ticks, 'Stage': 'Completed', 'Message': msg, 'Originator': 'TestMachine-tests-1'})\n    sha = sha256_hex(content)\n    (ev_dir / f'{ticks}_TestMachine-tests-1_Completed_{sha}.event').write_text(content, encoding='utf-8')\"",
 					ExpectCode: 0
 				},
 				{

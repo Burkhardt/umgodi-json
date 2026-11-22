@@ -41,7 +41,7 @@ def test_cr047_tc01_patch_existing_entity_succeeds(option: str) -> None:
 		f_out = io.StringIO()
 		f_err = io.StringIO()
 		with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-			code = main(["put", str(pit_dir / "Activity"), str(patch_file), option])
+			code = main(["add", str(pit_dir / "Activity"), "--source", str(patch_file), option])
 
 		assert code == 0, f"Expected exit 0, got {code}. stderr: {f_err.getvalue()}"
 		assert "1 source items: 1 written, 0 unchanged" in f_out.getvalue()
@@ -68,7 +68,7 @@ def test_cr047_tc02_missing_id_rejected_before_write() -> None:
 		f_out = io.StringIO()
 		f_err = io.StringIO()
 		with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-			code = main(["put", str(pit_dir / "Activity"), str(patch_file), "--require-existing"])
+			code = main(["add", str(pit_dir / "Activity"), "--source", str(patch_file), "--require-existing"])
 
 		assert code == 1
 		err = f_err.getvalue()
@@ -96,7 +96,7 @@ def test_cr047_tc03_mixed_batch_atomicity() -> None:
 		f_out = io.StringIO()
 		f_err = io.StringIO()
 		with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-			code = main(["put", str(pit_dir / "Activity"), str(patch_file), "--patch"])
+			code = main(["add", str(pit_dir / "Activity"), "--source", str(patch_file), "--patch"])
 
 		assert code == 1
 		err = f_err.getvalue()
@@ -123,7 +123,7 @@ def test_cr047_tc04_empty_array_rejected_under_patch_flag() -> None:
 		f_out = io.StringIO()
 		f_err = io.StringIO()
 		with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-			code = main(["put", str(pit_dir / "Activity"), str(patch_file), "--require-existing"])
+			code = main(["add", str(pit_dir / "Activity"), "--source", str(patch_file), "--require-existing"])
 
 		assert code == 1
 		err = f_err.getvalue().strip()
@@ -143,7 +143,7 @@ def test_cr047_tc05_default_upsert_without_flag_creates_entity() -> None:
 		f_out = io.StringIO()
 		f_err = io.StringIO()
 		with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-			code = main(["put", str(pit_dir / "Activity"), str(seed_file)])
+			code = main(["add", str(pit_dir / "Activity"), "--source", str(seed_file)])
 
 		assert code == 0
 		with Pit.open(pit_dir / "Activity", read_only=True) as pit:
@@ -166,7 +166,7 @@ def test_cr047_tc06_tombstoned_entity_rejected_under_strict_patch() -> None:
 		f_out = io.StringIO()
 		f_err = io.StringIO()
 		with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-			code = main(["put", str(pit_dir / "Activity"), str(patch_file), "--require-existing"])
+			code = main(["add", str(pit_dir / "Activity"), "--source", str(patch_file), "--require-existing"])
 
 		assert code == 1
 		assert "error: Entity 'Bob' does not exist in Pit 'Activity'." in f_err.getvalue()
@@ -250,7 +250,7 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 
 		# 1. Python jpit seeds initial entities
 		res1 = subprocess.run(
-			[sys.executable, "-m", "umgodi.cli", "put", str(pit_path), str(seed_file), "-n"],
+			[sys.executable, "-m", "umgodi.cli", "add", str(pit_path), "--source", str(seed_file), "-n"],
 			capture_output=True, text=True
 		)
 		assert res1.returncode == 0
@@ -289,9 +289,9 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 		assert "error: Entity 'Ghost999' does not exist in Pit 'Parity'." in res3.stderr
 		assert "Use without --id-exists / --patch to allow creating new entities." in res3.stderr
 
-		# 5. Python jpit put with missing ID and --patch fails with identical exact error
+		# 5. Python jpit seed with missing ID and --patch fails with identical exact error
 		res4 = subprocess.run(
-			[sys.executable, "-m", "umgodi.cli", "put", str(pit_path), str(patch_bad), "--patch", "-n"],
+			[sys.executable, "-m", "umgodi.cli", "add", str(pit_path), "--source", str(patch_bad), "--patch", "-n"],
 			capture_output=True, text=True
 		)
 		assert res4.returncode == 1
@@ -310,7 +310,7 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 		assert res_pits_empty.stderr.strip() == "error: Patch source contained 0 entities."
 
 		res_jpit_empty = subprocess.run(
-			[sys.executable, "-m", "umgodi.cli", "put", str(pit_path), str(empty_file), "--require-existing", "-n"],
+			[sys.executable, "-m", "umgodi.cli", "add", str(pit_path), "--source", str(empty_file), "--require-existing", "-n"],
 			capture_output=True, text=True
 		)
 		assert res_jpit_empty.returncode == 1

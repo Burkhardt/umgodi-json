@@ -227,7 +227,7 @@ tooling and is not a jsonpit runtime dependency.
 
 ## CR081 CLI receipts and lifecycle failures
 
-`jpit seed` and `jpit put` report source-entry written/unchanged counts after
+`jpit seed` and `jpit add` report source-entry written/unchanged counts after
 explicit Save and context exit. A failed local save or required owned-window
 cleanup propagates to a nonzero CLI exit without a success receipt. `close()`
 now raises OSError if the owned activity flag remains after an unsuccessful

@@ -34,18 +34,12 @@ def test_directory_export_uses_the_pit_name_and_preserves_source(tmp_path: Path)
 	assert not list((tmp_path / "Person").glob("*.flag"))
 
 
-def test_stdout_and_unadvertised_file_output(tmp_path: Path) -> None:
+def test_stdout_json(tmp_path: Path) -> None:
 	seed(tmp_path, "Person", {"Id": "Customer1"})
 	code, output, error = run("export", "Person", "--pitroot", str(tmp_path), "--json")
 	assert code == 0, error
 	assert json.loads(output)[0]["Id"] == "Customer1"
-	destination = tmp_path / "old-name.json"
-	code, _, error = run("export", str(tmp_path / "Person"), "--out", str(destination))
-	assert code == 0, error
-	assert json.loads(destination.read_text()) == json.loads(output)
-
-
-@pytest.mark.parametrize("mode", [[], ["--json", "--out-dir"], ["--out-dir", "--out"]])
+@pytest.mark.parametrize("mode", [[], ["--json", "--out-dir"]])
 def test_conflicting_or_missing_modes_fail_before_io(tmp_path: Path, mode: list[str]) -> None:
 	args = ["export", "Person", "-r", str(tmp_path)]
 	for token in mode:

@@ -60,8 +60,8 @@ def test_missing_config_directs_operator_to_amafu() -> None:
 			)
 
 			commands = [
-				["get", "Person", "Item1", "-n"],
-				["list", "Person", "-n"],
+				["history", "Person", "Item1", "-n"],
+
 				["list", "-r", "AIA", "-n"],
 				["grep", "test", "Person", "-n"],
 			]
@@ -106,7 +106,7 @@ def test_explicit_paths_work_without_config() -> None:
 				# CLI commands with explicit path
 				stdout_buf = io.StringIO()
 				with patch("sys.stdout", stdout_buf):
-					exit_code = cli_main(["list", str(pit_dir), "--json", "-n"])
+					exit_code = cli_main(["export", str(pit_dir), "--json", "-n"])
 				assert exit_code == 0
 				assert "Item1" in stdout_buf.getvalue()
 

@@ -33,6 +33,8 @@ from .store import (
 	Pit,
 	PitMaintenanceOptions,
 	PitMaintenanceResult,
+	PitSaveOutcome,
+	PitSaveResult,
 	PitStore,
 	TimeValue,
 	parse_and_validate_seed_payload,
@@ -42,6 +44,8 @@ __version__ = "4.6.7"
 
 __all__ = [
 	"Pit",
+	"PitSaveOutcome",
+	"PitSaveResult",
 	"PitStore",
 	"MutationTrackingMode",
 	"TimeValue",

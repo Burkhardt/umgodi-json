@@ -68,7 +68,7 @@ def test_seed_accepts_keyed_entity_map() -> None:
 			encoding="utf-8",
 		)
 
-		exit_code = cli_main(["put", "Object", "-s", str(source_file), "-r", str(temp_dir), "-n"])
+		exit_code = cli_main(["add", "Object", "-s", str(source_file), "-r", str(temp_dir), "-n"])
 		assert exit_code == 0
 
 		with Pit.open("Object", root=str(temp_dir)) as pit:
@@ -94,7 +94,7 @@ def test_seed_accepts_standard_array() -> None:
 			encoding="utf-8",
 		)
 
-		exit_code = cli_main(["seed", "Object", str(source_file), "-r", str(temp_dir), "-n"])
+		exit_code = cli_main(["seed", "Object", "--source", str(source_file), "-r", str(temp_dir), "-n"])
 		assert exit_code == 0
 
 		with Pit.open("Object", root=str(temp_dir)) as pit:

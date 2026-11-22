@@ -14,9 +14,9 @@
 			Name: "1. Python jpit creates sparse entity -> C# pits reads & exports",
 			Steps: [
 				{
-					Command: "jpit -r {RootName} set Jazz Sipho '{Role: \"Musician\", Status: \"Active\", Coach: \"Soccer\"}'",
+					Command: "echo '{Id: \"Sipho\", Role: \"Musician\", Status: \"Active\", Coach: \"Soccer\"}' | jpit add Jazz --source - -r {PitRoot}",
 					ExpectCode: 0,
-					ExpectStdoutContains: "Updated entity 'Sipho' in Pit 'Jazz'"
+					ExpectStdoutContains: "1 written, 0 unchanged"
 				},
 				{
 					Command: "pits export Jazz -r {PitRoot} --json -n",
@@ -33,7 +33,7 @@
 					ExpectCode: 0
 				},
 				{
-					Command: "jpit -r {RootName} get Jazz Sipho",
+					Command: "jpit grep '^Sipho$' Jazz -e -p Id -r {PitRoot} --jq '.[0]'",
 					ExpectCode: 0,
 					ExpectJson: {
 						Id: "Sipho",
@@ -48,9 +48,9 @@
 			Name: "3. CR040 Invariant: jpit rejects manual Modified payload",
 			Steps: [
 				{
-					Command: "jpit -r {RootName} set Jazz Sipho '{Role: \"Composer\", Modified: \"2026-09-26T23:26:42Z\"}'",
+					Command: "echo '{Id: \"Sipho\", Role: \"Composer\", Modified: \"2026-09-26T23:26:42Z\"}' | jpit add Jazz --source - -r {PitRoot}",
 					ExpectCode: 1,
-					ExpectStderrContains: "[jpit] Error: Cannot manually update protected attribute 'Modified'"
+					ExpectStderrContains: "Modified"
 				}
 			]
 		},
@@ -58,9 +58,9 @@
 			Name: "4. CR040 Invariant: jpit rejects manual Deleted payload",
 			Steps: [
 				{
-					Command: "jpit -r {RootName} set Jazz Sipho '{Deleted: true}'",
+					Command: "echo '{Id: \"Sipho\", Deleted: true}' | jpit add Jazz --source - -r {PitRoot}",
 					ExpectCode: 1,
-					ExpectStderrContains: "[jpit] Error: Cannot manually update protected attribute 'Deleted'"
+					ExpectStderrContains: "Deleted"
 				}
 			]
 		},
@@ -72,9 +72,9 @@
 					ExpectCode: 0
 				},
 				{
-					Command: "jpit -r {RootName} get Jazz Sipho",
-					ExpectCode: 1,
-					ExpectStderrContains: "Entity 'Sipho' not found in Pit 'Jazz'"
+					Command: "jpit grep '^Sipho$' Jazz -e -p Id -r {PitRoot} --jq '.[0]'",
+					ExpectCode: 0,
+					ExpectStdoutContains: "null"
 				},
 				{
 					Command: "jpit -r {RootName} history Jazz Sipho",

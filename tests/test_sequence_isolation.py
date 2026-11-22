@@ -6,7 +6,7 @@ from umgodi.config import loads_json5
 
 
 def test_runs_allocate_distinct_dropbox_roots(monkeypatch, tmp_path):
-	config = InqConfig({"Cloud": {"Dropbox": str(tmp_path)}})
+	config = InqConfig({"TestCloud": "Dropbox", "Cloud": {"Dropbox": str(tmp_path)}})
 	monkeypatch.setattr(InqConfig, "load", lambda: config)
 	with allocate_suite_root({}) as first, allocate_suite_root({}) as second:
 		assert first != second
@@ -18,7 +18,7 @@ def test_runs_allocate_distinct_dropbox_roots(monkeypatch, tmp_path):
 
 def test_no_onedrive_fallback(monkeypatch, tmp_path):
 	monkeypatch.setattr(InqConfig, "load", lambda: InqConfig({"Cloud": {"OneDrive": str(tmp_path)}}))
-	with pytest.raises(RuntimeError, match="Dropbox"):
+	with pytest.raises(RuntimeError, match="TestCloud"):
 		allocate_suite_root({})
 
 

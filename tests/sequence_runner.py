@@ -23,26 +23,27 @@ from umgodi.config import loads_json5, InqConfig
 
 
 def allocate_suite_root(data):
-	"""Allocate owned Dropbox storage before any suite command can execute."""
-	if data.get("Cloud", "Dropbox") != "Dropbox":
-		raise ValueError("Local sequence suites require Cloud=Dropbox")
+	"""Allocate owned TestCloud storage before any suite command can execute."""
+	if data.get("Cloud", "test") != "test":
+		raise ValueError("Local sequence suites require Cloud=test")
 	if data.get("Root") not in (None, "TEMP"):
 		raise ValueError("Local sequence roots must be allocated per run")
-	cloud = InqConfig.load().get_cloud_root("Dropbox")
+	config = InqConfig.load()
+	cloud = config.cloud_root(config.test_cloud) if config.test_cloud else None
 	if cloud is None or not cloud.is_dir():
-		raise RuntimeError("Sequence suites require configured, available Cloud.Dropbox; no OneDrive fallback")
+		raise RuntimeError("Sequence suites require configured, available TestCloud; no OneDrive fallback")
 	return tempfile.TemporaryDirectory(prefix="RAIkeep.Test.", dir=str(cloud))
 
 
 def suite_variables(data, root):
-	variables = {"root": root, "cloud": "Dropbox"}
+	variables = {"root": root, "cloud": InqConfig.load().test_cloud}
 	for key, value in data.get("Variables", {}).items():
 		if key in ("root", "cloud"):
 			raise ValueError(f"Suite cannot override managed {key}")
 		variables[key] = str(value).replace("{root}", root)
 	for key in ("RootName", "PitRoot"):
 		if key in variables and not Path(variables[key]).resolve().is_relative_to(Path(root).resolve()):
-			raise ValueError(f"{key} must stay inside the owned Dropbox run directory")
+			raise ValueError(f"{key} must stay inside the owned TestCloud run directory")
 	return variables
 
 

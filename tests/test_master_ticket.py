@@ -20,7 +20,7 @@ from umgodi.flags import (
 from umgodi.item import TimestampedValue
 
 
-def test_master_flag_claim_and_renewal() -> None:
+def test_master_flag_claim_without_renewal() -> None:
 	with tempfile.TemporaryDirectory() as td:
 		pit_dir = Path(td)
 		master = MasterFlagFile(pit_dir)
@@ -37,9 +37,9 @@ def test_master_flag_claim_and_renewal() -> None:
 		assert stolen is False
 		assert master.originator == "MachineA-App-100"
 
-		# Owner can renew
+		# An active lease is single-use
 		renewed = master.try_claim("MachineA-App-100")
-		assert renewed is True
+		assert renewed is False
 		assert master.originator == "MachineA-App-100"
 
 

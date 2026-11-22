@@ -5,7 +5,7 @@ Verifies that:
    dispatches a sparse delta fragment to the Pit.
 2. The appended fragment in storage contains ONLY the delta properties and Id/Modified,
    with ZERO leakage of prior projected properties.
-3. 'jpit set' and 'jpit del-prop' emit pure sparse deltas without Read-Modify-Write.
+3. 'jpit add' and 'jpit delete-property' emit pure sparse deltas without Read-Modify-Write.
 """
 
 from __future__ import annotations
@@ -119,7 +119,7 @@ def test_bound_entity_property_tombstone_emits_sparse_delta() -> None:
 
 
 def test_cli_set_emits_pure_sparse_delta_no_read_modify_write() -> None:
-	"""Certifies that 'jpit set' never performs Read-Modify-Write."""
+	"""Certifies that 'jpit add' never performs Read-Modify-Write."""
 	with tempfile.TemporaryDirectory() as tmp_dir:
 		pit_dir = Path(tmp_dir) / "TestPit"
 
@@ -134,8 +134,10 @@ def test_cli_set_emits_pure_sparse_delta_no_read_modify_write() -> None:
 				"Who": "RSB",
 			}))
 
-		# Execute jpit set Loc1 {"UseCase": "PerformLive"}
-		exit_code = main(["set", str(pit_dir), "Loc1", '{"UseCase": "PerformLive"}'])
+		# Execute jpit add Loc1 {"UseCase": "PerformLive"}
+		source = Path(tmp_dir) / "delta.json"
+		source.write_text('{"Id":"Loc1","UseCase":"PerformLive"}')
+		exit_code = main(["add", str(pit_dir), "--source", str(source)])
 		assert exit_code == 0
 
 		with Pit.open(pit_dir, unflagged=True) as pit:
@@ -167,7 +169,7 @@ def test_cli_set_emits_pure_sparse_delta_no_read_modify_write() -> None:
 
 
 def test_cli_del_prop_emits_pure_sparse_delta() -> None:
-	"""Certifies that 'jpit del-prop' emits a sparse tombstone without prior properties."""
+	"""Certifies that 'jpit delete-property' emits a sparse tombstone without prior properties."""
 	with tempfile.TemporaryDirectory() as tmp_dir:
 		pit_dir = Path(tmp_dir) / "TestPit"
 
@@ -179,7 +181,7 @@ def test_cli_del_prop_emits_pure_sparse_delta() -> None:
 				"What": "Temporary Depot",
 			}))
 
-		exit_code = main(["del-prop", str(pit_dir), "Loc1", "What"])
+		exit_code = main(["delete-property", str(pit_dir), "Loc1", "What"])
 		assert exit_code == 0
 
 		with Pit.open(pit_dir, unflagged=True) as pit:

@@ -7,6 +7,8 @@ coordination, change-file streaming, receipt-based cleanup, and Mapping protocol
 from __future__ import annotations
 
 import abc
+import asyncio
+import time
 import copy
 from dataclasses import dataclass, field
 import datetime
@@ -17,14 +19,17 @@ from inqaba import InqEntry, InqPath
 import threading
 from typing import Any, ClassVar, Iterator, MutableMapping
 import weakref
+import uuid
 
 from .canonical import (
 	canonical_json,
+	datetime_to_utc_ticks,
+	format_iso_timestamp,
 	parse_iso_timestamp,
 	utcnow,
 )
 from .changes import ChangeFile, ReceiptFile
-from .config import loads_json5
+from .config import OsConfig, loads_json5
 from .exceptions import (
 	ObjectDisposedError,
 	PitCorruptError,
@@ -35,6 +40,7 @@ from .exceptions import (
 )
 from .flags import (
 	MasterFlagFile,
+	MasterTicket,
 	ProcessFlagFile,
 	current_flag_name,
 	flag_name,
@@ -51,6 +57,23 @@ from .fs import (
 )
 from .history import PitItems
 from .item import PitItem, TimestampedValue
+
+
+class PitSaveOutcome(str, enum.Enum):
+	NOTHING_TO_WRITE = "NothingToWrite"
+	WROTE = "Wrote"
+	PUBLISHED_AS_CHANGES = "PublishedAsChanges"
+	PIT_NOT_LOADED = "PitNotLoaded"
+
+
+@dataclass(frozen=True)
+class PitSaveResult:
+	outcome: PitSaveOutcome
+	fragment_count: int = 0
+
+	@classmethod
+	def from_changes(cls, count: int) -> PitSaveResult:
+		return cls(PitSaveOutcome.PUBLISHED_AS_CHANGES if count else PitSaveOutcome.NOTHING_TO_WRITE, count)
 
 
 class MutationTrackingMode(enum.Enum):
@@ -251,6 +274,9 @@ class JsonPitBase:
 		self.unflagged = unflagged
 		self.retain_window = retain_window
 
+		self._canonical_seen = self.canonical_file.is_file()
+		self._claim_gate = threading.Lock()
+		self._claim_time = None
 		self._master_flag = MasterFlagFile(self.pit_dir, "Master")
 		self._process_flag: ProcessFlagFile | None = None
 		self._locker = threading.RLock()
@@ -273,81 +299,89 @@ class JsonPitBase:
 	def process_flag(self) -> ProcessFlagFile:
 		if self._process_flag is None:
 			self._process_flag = ProcessFlagFile(self.pit_dir, self.subscriber)
-			if not self._process_flag.path.is_file():
-				self._process_flag.update()
 		return self._process_flag
 
 	def running_on_master(self) -> bool:
 		"""Quick check: is this exact process currently recorded as the master owner?"""
 		if self.unflagged:
 			return True
-		return self.master_flag.originator == self.exact_process_identity
+		return self._verify_claim()
 
-	def try_acquire_master(self) -> bool:
-		"""
-		Attempts to acquire or renew master lease rights under CR003 exact-process ownership.
-		"""
+	_bans: ClassVar[dict[str, datetime.datetime]] = {}
+
+	def _load_timing(self):
+		target = self.pit_dir.resolve()
+		roots = [root.resolve() for root in OsConfig.load().clouds.values()]
+		root = next((root for root in sorted(roots, key=lambda p: len(p.parts), reverse=True)
+			if root in target.parents or root == target), self.pit_dir.parent.parent)
+		path = root / "JsonPit" / "timing.json5"
+		config = loads_json5(path.read_text(encoding="utf-8")) if path.is_file() else {}
+		if not isinstance(config, dict):
+			raise ValueError("Expected a timing configuration object")
+		values = [config.get(key, default) for key, default in (
+			("TicketDurationSeconds", 120), ("SyncPitDurationSeconds", 60),
+			("SyncFlagDurationSeconds", 15), ("BufferSeconds", 5))]
+		if any(type(v) not in (int, float) or not 0 <= v <= 2147483 for v in values) or values[0] <= sum(values[1:]):
+			raise ValueError("Invalid JsonPit timing configuration")
+		return tuple(datetime.timedelta(seconds=v) for v in values)
+
+	def try_acquire_master(self) -> tuple[bool, datetime.datetime | None]:
+		if not self._claim_gate.acquire(blocking=False):
+			return False, None
+		try:
+			return self._claim_available_ticket()
+		finally:
+			self._claim_gate.release()
+
+	def _claim_available_ticket(self):
+		if self.read_only:
+			return False, None
+		if self.unflagged:
+			return True, utcnow()
+		self._lease, pit, flag, buffer = self._load_timing()
+		self.master_flag.TICKET_DURATION = self._lease
+		self._pit_window = pit + buffer
+		key = str(self.canonical_file)
+		try:
+			previous = self.master_flag.ticket()
+		except (ValueError, OSError):
+			return False, None
+		now = utcnow()
+		if key in self._bans and now < self._bans[key]:
+			return False, None
+		pit_ready = now
+		if previous:
+			if previous.state == "Held":
+				if now < previous.claimed + self._lease:
+					return False, None
+				pit_ready = now + self._pit_window
+			else:
+				if previous.machine.casefold() == get_machine_name().casefold() and now < previous.written + self._pit_window:
+					return False, None
+				pit_ready = min(previous.written, now) + self._pit_window
+		self.master_flag.write_ticket(MasterTicket("Held", self.exact_process_identity, now,
+			previous.written if previous else None, previous.machine if previous else ""))
+		self._claim_time = now
+		self.process_flag.update(time=now)
+		return True, max(now + flag + buffer, pit_ready)
+
+	def _verify_claim(self) -> bool:
 		if self.unflagged:
 			return True
-
-		with self._locker:
-			master = self.master_flag
-			# 1. Fast path: this exact process already owns a valid lease — renew it
-			if master.is_owned_by(self.exact_process_identity):
-				master.try_claim(self.exact_process_identity)
-				return True
-
-			if not master.is_expired:
-				recorded_owner = master.originator
-				owner_participant = participant_of(recorded_owner)
-				if owner_participant == self.participant_identity:
-					# Same participant, check if recorded owner PID is still alive
-					if is_exact_process_identity(recorded_owner) and ProcessFlagFile.is_process_window_active(
-						self.pit_dir, recorded_owner
-					):
-						return False  # Existing PID is still active
-					# Window released or expired -> inherit!
-					master.update(originator=self.exact_process_identity)
-					return True
-				# A different participant holds a valid lease
-				return False
-
-			# Ticket is expired — verify no other foreign process was recently active
-			if self._any_foreign_process_active():
-				return False
-
-			return master.try_claim(self.exact_process_identity)
-
-	def _any_foreign_process_active(self) -> bool:
-		"""Checks if another machine wrote a flag file within TICKET_DURATION."""
-		if not self.pit_dir.is_dir():
+		try:
+			ticket = self.master_flag.ticket()
+		except (ValueError, OSError):
 			return False
-		now = utcnow()
-		my_flag_name = current_flag_name(self.subscriber)
-		machine = get_machine_name().lower()
+		return bool(ticket and ticket.state == "Held" and ticket.owner == self.exact_process_identity
+			and ticket.claimed == self._claim_time and utcnow() < ticket.claimed + self._lease)
 
-		for p in self.pit_dir.glob("*.flag"):
-			if p.stem.lower() == "master":
-				continue
-			if p.stem.lower() == my_flag_name.lower():
-				continue
-			# Check machine prefix
-			sep = p.stem.find("-")
-			if sep > 0 and p.stem[:sep].lower() == machine:
-				continue
-			# Foreign process flag
-			content = safe_read_text(p)
-			if not content:
-				continue
-			line = content.splitlines()[0] if content.splitlines() else ""
-			if "|" in line:
-				try:
-					stamp = parse_iso_timestamp(line.split("|", 1)[1])
-					if (now - stamp) <= MasterFlagFile.TICKET_DURATION:
-						return True
-				except Exception:
-					pass
-		return False
+	def _return_claim(self) -> bool:
+		if not self.unflagged and self._verify_claim():
+			now = utcnow()
+			self.master_flag.write_ticket(MasterTicket("Returned", self.exact_process_identity, self._claim_time, now, get_machine_name()))
+			self._bans[str(self.canonical_file)] = now + self._pit_window
+			return True
+		return self.unflagged
 
 	def try_release_process_window(self) -> bool:
 		"""Releases this process's activity flag on disk."""
@@ -471,6 +505,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 		)
 		self.default_max_count = default_max_count
 		self.autoload = autoload
+		self._save_state_initialized = autoload
 		if tracking_mode is not None:
 			self._tracking_mode = (
 				MutationTrackingMode(tracking_mode)
@@ -490,8 +525,8 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 		if self.autoload:
 			if self.canonical_file.is_file():
 				self.load()
-			if not self.unflagged:
-				self.merge_changes()
+			self._merge_pending(self._historic_items)
+			self._publish_all_live_state()
 
 	# --- Live Mutation Tracking Mode & Properties ---
 
@@ -594,7 +629,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 			if refresh_modified:
 				item.invalidate()
 			else:
-				item.validate()
+				item.mark_pending()
 			updated = current.push(item)
 			if updated is current:
 				return False
@@ -680,11 +715,6 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 	# --- Context Manager Protocol ---
 
 	def __enter__(self) -> Pit:
-		if not self.unflagged and not self.read_only:
-			self.process_flag.update()
-		if self.autoload:
-			self.load()
-			self.merge_changes()
 		return self
 
 	def __exit__(
@@ -789,10 +819,10 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 							candidate[k] = cand_history.push(frag)
 
 				self._historic_items = candidate
+				self._save_state_initialized = True
+				self._canonical_seen = True
 				self._publish_all_live_state()
 
-				if not undercover and not self.unflagged and not self.read_only:
-					self.process_flag.update()
 			return True
 		except Exception as ex:
 			if isinstance(ex, PitCorruptError):
@@ -805,19 +835,15 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 			raise PitCorruptError(f"Pit snapshot in {self.canonical_file} must be a JSON array.")
 
 		candidate: dict[str, PitItems] = {}
-		for history_entry in data:
-			if not isinstance(history_entry, list):
-				continue
-			fragments: list[PitItem] = []
-			key: str | None = None
-			for raw_frag in history_entry:
-				if isinstance(raw_frag, dict):
-					frag = PitItem(raw_frag, invalidate=False)
-					fragments.append(frag)
-					if not key:
-						key = frag.id
-			if key:
-				candidate[key] = PitItems(key, fragments, self.default_max_count)
+		for entry in data:
+			rows = entry if isinstance(entry, list) else [entry]
+			for raw in rows:
+				if not isinstance(raw, dict) or not raw.get("Id"):
+					raise PitCorruptError(f"Invalid canonical history in {self.canonical_file}")
+				item = PitItem(raw, invalidate=False)
+				history = candidate.get(item.id) or PitItems.create(item.id, self.default_max_count)
+				candidate[item.id] = history.push(item)
+
 		return candidate
 
 	def seed_from_file(self, file_path: InqEntry | str, require_existing: bool = False) -> int:
@@ -968,40 +994,126 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 
 	# --- Persistence & Change Files ---
 
-	def save(self, force: bool = False, pretty: bool = False) -> None:
-		"""
-		Persists memory state adhering to the JsonPit distributed protocol:
-		- If running as Master: updates the canonical <PitName>.pit file in place.
-		- If running as Non-Master: writes collision-safe change files into Changes/.
-		"""
-		if self.read_only:
-			raise OSError(f"Cannot save read-only Pit '{self.pit_name}'.")
-
-		with self._locker:
-			self.flush_live_items()
-			if self.try_acquire_master():
-				self._store_canonical(force=force, pretty=pretty)
-			else:
-				self._create_change_files()
+	def save(self, force: bool = False, pretty: bool = False) -> PitSaveResult:
+		"""Report the local canonical write or change-file publication for this save."""
+		completed, ready, claim = self._begin_save(force)
+		if completed is not None:
+			return completed
+		return self._store_turn(ready, claim, pretty=pretty)
 
 	Save = save
 
-	def _store_canonical(self, force: bool = False, pretty: bool = False) -> bool:
-		"""Writes the complete point-in-time snapshot to <PitName>.pit."""
+	def _begin_save(self, force):
+		if self.read_only:
+			raise OSError(f"Cannot save read-only Pit '{self.pit_name}'.")
+		with self._locker:
+			if self._disposed or (not self._save_state_initialized and not self._historic_items):
+				return PitSaveResult(PitSaveOutcome.PIT_NOT_LOADED), None, None
+			self.flush_live_items()
+			if not force and not self.has_dirty_items() and not any(self.pit_dir.glob("*.json")):
+				return PitSaveResult(PitSaveOutcome.NOTHING_TO_WRITE), None, None
+			acquired, ready = self.try_acquire_master()
+			if not acquired:
+				return PitSaveResult.from_changes(self._create_change_files()), None, None
+			return None, ready, self._claim_time
+
+	async def save_async(self, force: bool = False, pretty: bool = False) -> PitSaveResult:
+		completed, ready, claim = self._begin_save(force)
+		if completed is not None:
+			return completed
+		await asyncio.sleep(max(0, (ready - utcnow()).total_seconds()))
+		return await asyncio.to_thread(self._store_turn, ready, claim, pretty)
+
+	def _store_turn(self, ready, claim, pretty=False, result=None):
+		delay = (ready - utcnow()).total_seconds()
+		if delay > 0:
+			time.sleep(delay)
+		with self._locker:
+			if self._disposed:
+				return PitSaveResult(PitSaveOutcome.PIT_NOT_LOADED)
+			if claim != self._claim_time:
+				return PitSaveResult.from_changes(self._create_change_files())
+			try:
+				return self._store_verified(pretty, result)
+			except (OSError, ValueError, PitCorruptError):
+				if not self.unflagged:
+					self._create_change_files()
+				raise
+
+	def _check_before_write(self) -> PitSaveResult | None:
+		if self.unflagged:
+			return None
+		losing = []
+		unreadable = False
+		for path in MasterFlagFile.conflict_flags(self.pit_dir):
+			try:
+				if MasterTicket.parse(path.read_text(encoding="utf-8")).owner == self.exact_process_identity:
+					losing.append(path)
+			except (ValueError, OSError):
+				unreadable = True
+		if not losing and not unreadable and self._verify_claim():
+			return None
+		count = self._create_change_files()
+		now = utcnow()
+		event_id = str(uuid.uuid4())
+		event = {
+			"SchemaVersion": "1", "EventId": event_id, "UtcTime": format_iso_timestamp(now),
+			"UtcTicks": datetime_to_utc_ticks(now), "Level": "Warning", "Stage": "ConflictDetected",
+			"Pit": str(self.canonical_file), "Machine": get_machine_name(), "Process": self.exact_process_identity,
+			"Role": "Loser", "CorrelationId": event_id, "Operation": "Store", "FragmentCount": count,
+			"FileCount": len(losing), "Message": "Ticket changed, expired, or conflicted before canonical persistence.",
+		}
+		path = self.pit_dir / "Events" / f"{event['UtcTicks']}_{self.exact_process_identity}_ConflictDetected.event"
+		safe_write_in_place(path, canonical_json(event))
+		for path in losing:
+			if path.exists() and MasterTicket.parse(path.read_text(encoding="utf-8")).owner == self.exact_process_identity:
+				safe_delete_file(path)
+		return PitSaveResult.from_changes(count)
+
+	def _store_verified(self, pretty, result):
+		result = result or PitMaintenanceResult(str(self.canonical_file), applied=True)
+		fallback = self._check_before_write()
+		if fallback is not None:
+			return fallback
+		snapshot = self._read_cleanup_snapshot()
+		self.flush_live_items()
+		dirty = [f for h in self._historic_items.values() for f in h.history if not f.is_valid()]
+		entries = self._merge_pending(snapshot, result)
+		for item in dirty:
+			snapshot[item.id] = snapshot.get(item.id, PitItems.create(item.id, self.default_max_count)).push(item)
+		self._historic_items = snapshot
+		self._publish_all_live_state()
+		written = self._store_canonical(verify=self._check_before_write, pretty=pretty)
+		if written.outcome != PitSaveOutcome.WROTE:
+			return written
+		if self.canonical_file.stat().st_mtime_ns != self._canonical_write_ns:
+			snapshot = self._read_cleanup_snapshot()
+		self._receipt_changes(entries, result, snapshot)
+		for path in self.pit_dir.glob("*.receipt"):
+			change = path.with_suffix(".json")
+			if not change.exists():
+				receipt = ReceiptFile(change)
+				if receipt.is_eligible_for_cleanup and self._verify_claim() and receipt.remove():
+					result.receipts_removed += 1
+		if not self._return_claim():
+			for item in dirty:
+				ChangeFile.create(self.pit_dir, item, self.exact_process_identity)
+			return PitSaveResult(PitSaveOutcome.WROTE, len(dirty))
+		return written
+
+	def _store_canonical(self, verify, pretty: bool = False) -> PitSaveResult:
 		dirty_frags: list[PitItem] = []
 		model: list[list[dict[str, Any]]] = []
 
 		for key in sorted(self._historic_items.keys()):
 			pit_items = self._historic_items[key]
 			history_list: list[dict[str, Any]] = []
-			for frag in pit_items.history:
+			for frag in pit_items._history:
 				history_list.append(frag.to_dict())
 				if not frag.is_valid():
 					dirty_frags.append(frag)
 			model.append(history_list)
 
-		if not dirty_frags and not force and self.canonical_file.is_file():
-			return False
 
 		# Serializes to strict canonical JSON
 		if pretty:
@@ -1010,23 +1122,25 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 			raw_json = canonical_json(model)
 
 		# CR022 in-place sibling write
+		fallback = verify()
+		if fallback is not None:
+			return fallback
 		safe_write_in_place(self.canonical_file, raw_json)
-
-		if not self.unflagged and self.master_flag.originator == self.exact_process_identity:
-			publication = self.master_flag.update(originator=self.exact_process_identity)
-			self.process_flag.update(time=publication.time)
+		self._canonical_write_ns = self.canonical_file.stat().st_mtime_ns
+		self._canonical_seen = True
+		self._save_state_initialized = True
 
 		# Mark all included fragments as clean
 		for frag in dirty_frags:
 			frag.validate()
 
-		return True
+		return PitSaveResult(PitSaveOutcome.WROTE)
 
 	def _create_change_files(self) -> int:
 		"""Writes all dirty fragments as ordinary collision-safe change files."""
 		count = 0
 		for pit_items in self._historic_items.values():
-			for frag in pit_items.history:
+			for frag in pit_items._history:
 				if not frag.is_valid():
 					ChangeFile.create(self.pit_dir, frag, self.exact_process_identity)
 					frag.validate()
@@ -1064,68 +1178,44 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 
 	MergeIntoHistory = merge_into_history
 
-	def merge_changes(self) -> int:
-		"""
-		Discovers and merges change files from peer processes.
-		If running as master, canonicalizes updates and issues cleanup receipts.
-		"""
-		change_files = [
-			p for p in self.pit_dir.glob("*.json") if p.name != self.canonical_file.name
-		]
-		if not change_files:
-			return 0
-
-		merged_count = 0
-		merged_entries: list[tuple[InqEntry, list[list[dict[str, Any]]]]] = []
-
-		with self._locker:
-			for cf in sorted(change_files, key=lambda p: p.name, reverse=True):
-				payload = ChangeFile.read_validated(cf)
+	def _merge_pending(self, snapshot, result=None):
+		entries = []
+		for path in sorted(self.pit_dir.glob("*.json"), key=lambda p: p.name, reverse=True):
+			if result is not None:
+				result.change_files_observed += 1
+			payload = ChangeFile.read_validated(path)
+			try:
 				if payload is None:
-					continue
-				for entry in payload:
-					if isinstance(entry, dict):
-						item = PitItem(entry, invalidate=False)
-						self.merge_into_history(
-							PitItems(item.id, [item], self.default_max_count)
-						)
-					elif isinstance(entry, list):
-						for raw_frag in entry:
-							if isinstance(raw_frag, dict):
-								item = PitItem(raw_frag, invalidate=False)
-								self.merge_into_history(
-									PitItems(item.id, [item], self.default_max_count)
-								)
-				merged_entries.append((cf, payload))
-				merged_count += 1
+					raise ValueError("Incomplete or invalid change file")
+				fragments = []
+				for row in payload:
+					for raw in (row if isinstance(row, list) else [row]):
+						if not isinstance(raw, dict) or not raw.get("Id"):
+							raise ValueError("Expected a fragment with an Id")
+						fragments.append(PitItem(raw, invalidate=False))
+			except (ValueError, TypeError):
+				if result is not None:
+					result.change_files_invalid += 1
+				continue
+			for item in fragments:
+				history = snapshot.get(item.id) or PitItems.create(item.id, self.default_max_count)
+				snapshot[item.id] = history.push(item)
+			entries.append((path, payload))
+			if result is not None:
+				result.change_files_valid += 1
+				result.change_files_merged += 1
+		return entries
 
-			# If master, persist merged state and manage cleanup receipts
-			if not self.read_only and self.try_acquire_master():
-				result = PitMaintenanceResult(str(self.canonical_file), applied=True)
-				self._persist_and_receipt_changes(merged_entries, result)
-				if result.failures:
-					raise OSError(result.failures[0])
-
-		return merged_count
+	def merge_changes(self) -> int:
+		"""Merge pending changes and use a write turn when opened for persistence."""
+		return self.maintain(apply=not self.read_only).change_files_merged
 
 	# --- Maintenance & Cleanup (CR021/CR022) ---
 
 	def _is_current_exact_master(self) -> bool:
-		return self.unflagged or self.master_flag.is_owned_by(self.exact_process_identity)
+		return self._verify_claim()
 
-	def _persist_and_receipt_changes(
-		self, merged_files: list[tuple[InqEntry, list[Any]]], result: PitMaintenanceResult,
-	) -> None:
-		if not merged_files:
-			return
-		try:
-			snapshot = self._read_cleanup_snapshot()
-			if any(not self._canonical_accounts_for(snapshot, payload) for _, payload in merged_files):
-				result.canonical_persisted = self._store_canonical(force=True)
-				snapshot = self._read_cleanup_snapshot()
-		except (OSError, ValueError, PitCorruptError) as exc:
-			result.failures.append(f"Could not persist or verify canonical snapshot: {exc}")
-			return
+	def _receipt_changes(self, merged_files, result, snapshot):
 		for cf, payload in merged_files:
 			if ChangeFile.try_parse_name(cf.stem) is None:
 				continue
@@ -1158,6 +1248,8 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 
 	def _read_cleanup_snapshot(self) -> dict[str, PitItems]:
 		if not self.canonical_file.is_file():
+			if self._canonical_seen:
+				raise PitCorruptError(f"Missing previously observed canonical {self.canonical_file}")
 			return {}
 		content = safe_read_text(self.canonical_file)
 		if not content or not content.strip():
@@ -1214,72 +1306,25 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 
 		now = utcnow()
 
-		if not self._historic_items and self.canonical_file.is_file():
+		if not options.apply and not self._historic_items and self.canonical_file.is_file():
 			self.load(undercover=True)
 
+		if options.apply and (self.has_dirty_items() or any(self.pit_dir.glob("*.json")) or any(self.pit_dir.glob("*.receipt"))):
+			result.current_master, ready = self.try_acquire_master()
+			if result.current_master:
+				saved = self._store_turn(ready, self._claim_time, result=result)
+				result.canonical_persisted = saved.outcome == PitSaveOutcome.WROTE
 		with self._locker:
-			# 1. Enumerate and process change files
-			change_files = sorted(
-				[p for p in self.pit_dir.glob("*.json") if p.name != self.canonical_file.name],
-				key=lambda p: p.name,
-				reverse=True if options.apply else False,
-			)
-
-			merged_files: list[tuple[InqEntry, list[Any]]] = []
-			for cf in change_files:
-				result.change_files_observed += 1
-				try:
-					payload = ChangeFile.read_validated(cf)
-					if payload is None:
-						result.change_files_invalid += 1
-						continue
-					result.change_files_valid += 1
-					for entry in payload:
-						if isinstance(entry, dict):
-							item = PitItem(entry, invalidate=False)
-							current = self._historic_items.get(item.id) or PitItems.create(
-								item.id, self.default_max_count
-							)
-							self._historic_items[item.id] = current.push(item)
-						elif isinstance(entry, list):
-							for raw_frag in entry:
-								if isinstance(raw_frag, dict):
-									item = PitItem(raw_frag, invalidate=False)
-									current = self._historic_items.get(item.id) or PitItems.create(
-										item.id, self.default_max_count
-									)
-									self._historic_items[item.id] = current.push(item)
-					result.change_files_merged += 1
-					merged_files.append((cf, payload))
-				except Exception as ex:
-					result.change_files_invalid += 1
-					result.deferred.append(f"Change file is not currently mergeable: {cf.name}: {ex}")
-
-			# 2. If apply: acquire master, store canonical, manage receipts & cleanup
-			if options.apply:
-				result.current_master = not self.read_only and self.try_acquire_master()
-				if result.current_master:
-					self._persist_and_receipt_changes(merged_files, result)
-
-					# Inspect orphan receipts whose change file is missing
-					for rf_path in sorted(self.pit_dir.glob("*.receipt"), key=lambda p: p.name):
-						cf_path = rf_path.with_suffix(".json")
-						if not cf_path.is_file():
-							result.receipts_observed += 1
-							try:
-								orphan_receipt = ReceiptFile(cf_path)
-								if orphan_receipt.is_eligible_for_cleanup and self._is_current_exact_master():
-									orphan_receipt.remove()
-									result.receipts_removed += 1
-								else:
-									result.receipts_retained += 1
-							except Exception:
-								pass
-				elif merged_files:
+			if not result.current_master:
+				self.flush_live_items()
+				if options.apply and not self.read_only:
+					self._create_change_files()
+				entries = self._merge_pending(self._historic_items, result)
+				self._publish_all_live_state()
+				if options.apply and entries:
 					result.deferred.append("Cleanup evidence and deletion require current exact-master authority.")
-			else:
-				# Report-only inspection of receipts
-				for cf in change_files:
+			if not options.apply:
+				for cf, _ in entries:
 					rf_path = cf.with_suffix(".receipt")
 					if rf_path.is_file():
 						result.receipts_observed += 1
@@ -1319,7 +1364,10 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 						if age >= options.older_than:
 							reread_content = safe_read_text(pf)
 							reread_line = reread_content.splitlines()[0] if reread_content else ""
-							if reread_line and (now - TimestampedValue(reread_line).time) >= options.older_than:
+							if not is_exact_process_identity(pf.stem) or not tv.value.endswith(":" + pf.stem.rsplit("-", 1)[-1]):
+								result.deferred.append(f"Process flag filename/content PID mismatch: {pf.name}")
+								continue
+							if reread_content == content and len(content.splitlines()) == 1 and reread_line:
 								safe_delete_file(pf)
 								if not pf.exists():
 									result.process_flags_pruned += 1

@@ -34,6 +34,7 @@ dev = [
 	"pytest-cov>=5.0",
 	"mypy>=1.10",
 	"ruff>=0.5",
+	"vikela[pylint]==4.6.7",
 ]
 
 [project.urls]
@@ -77,3 +78,6 @@ select = ["E", "F", "W", "I", "UP", "B", "RUF"]
 [tool.ruff.format]
 indent-style = "tab"
 quote-style = "double"
+
+[tool.vikela]
+disable = []

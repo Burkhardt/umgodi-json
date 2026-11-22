@@ -7,6 +7,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import pytest
 import os
 import tempfile
 from pathlib import Path
@@ -34,34 +35,18 @@ def _capture_output(capsys: Any = None) -> Any:
 			yield _CaptureResult(f_out.getvalue(), f_err.getvalue())
 
 
-def test_cli_list_command(capsys: Any = None) -> None:
-	f_out = io.StringIO()
-	f_err = io.StringIO()
-	with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-		code = main(["list", str(FIXTURE_PATH)])
-	assert code == 0
-	out = f_out.getvalue()
-	assert "Adele" in out
-	assert "7010" in out
-	assert "Dr. Rainer Burkhardt" in out
-
-
-def test_cli_get_command(capsys: Any = None) -> None:
-	f_out = io.StringIO()
-	f_err = io.StringIO()
-	with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-		code = main(["get", str(FIXTURE_PATH), "7010"])
-	assert code == 0
-	data = json.loads(f_out.getvalue())
-	assert data["Name"] == "Adele"
-	assert data["Class"] == "Agent"
+@pytest.mark.parametrize("verb", ["put", "set", "get", "rename", "status", "delete"])
+def test_removed_verbs_are_rejected(verb):
+	with pytest.raises(SystemExit) as error:
+		main([verb, "Person"])
+	assert error.value.code == 2
 
 
 def test_cli_grep_living_state(capsys: Any = None) -> None:
 	f_out = io.StringIO()
 	f_err = io.StringIO()
 	with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-		code = main(["grep", str(FIXTURE_PATH), "Smalltalk"])
+		code = main(["grep", "Smalltalk", str(FIXTURE_PATH)])
 	assert code == 0
 	out = f_out.getvalue()
 	assert "Adele" in out
@@ -72,53 +57,26 @@ def test_cli_grep_json_output(capsys: Any = None) -> None:
 	f_out = io.StringIO()
 	f_err = io.StringIO()
 	with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-		code = main(["grep", str(FIXTURE_PATH), "Goldberg", "--json"])
+		code = main(["grep", "Goldberg", str(FIXTURE_PATH), "--json"])
 	assert code == 0
 	results = json.loads(f_out.getvalue())
 	assert len(results) >= 1
 	assert any(r["Id"] == "7010" and r["Name"] == "Adele" for r in results)
 
 
-def test_cli_put_and_set_lifecycle(capsys: Any = None) -> None:
-	with tempfile.TemporaryDirectory() as td:
-		pit_path = Path(td) / "TestPit.pit"
-
-		# Ingest JSON5 via set
-		f_out = io.StringIO()
-		with contextlib.redirect_stdout(f_out):
-			code = main(["set", str(pit_path), "User1", "{ Name: 'Alice', Role: 'Architect' }"])
-		assert code == 0
-
-		# Verify get
-		f_out = io.StringIO()
-		with contextlib.redirect_stdout(f_out):
-			code = main(["get", str(pit_path), "User1"])
-		assert code == 0
-		data = json.loads(f_out.getvalue())
-		assert data["Name"] == "Alice"
-		assert data["Role"] == "Architect"
-
-		# Tombstone entity
-		f_out = io.StringIO()
-		with contextlib.redirect_stdout(f_out):
-			code = main(["del", str(pit_path), "User1", "--by", "Adele"])
-		assert code == 0
-
-		# Should now be deleted
-		f_err = io.StringIO()
-		with contextlib.redirect_stderr(f_err):
-			code = main(["get", str(pit_path), "User1"])
-		assert code == 1
-
-
-def test_cli_status_command(capsys: Any = None) -> None:
-	f_out = io.StringIO()
-	with contextlib.redirect_stdout(f_out):
-		code = main(["status", str(FIXTURE_PATH)])
-	assert code == 0
-	out = f_out.getvalue()
-	assert "Pit Status" in out
-	assert "Master Lease" in out
+def test_seed_add_share_sparse_history_and_delete(tmp_path, capsys):
+	pit = str(tmp_path / "TestPit.pit")
+	source = tmp_path / "source.json"
+	for verb, payload in [("seed", {"Name": "Alice", "Role": "Architect"}), ("add", {"Role": "Editor"})]:
+		source.write_text(json.dumps({"Id": "User1", **payload}))
+		assert main([verb, pit, "--source", str(source)]) == 0
+	capsys.readouterr()
+	assert main(["history", pit, "User1"]) == 0
+	history = json.loads(capsys.readouterr().out)
+	assert [entry["Role"] for entry in history] == ["Editor", "Architect"]
+	assert "Name" not in history[0]
+	assert main(["del-prop", pit, "User1", "Name"]) == 0
+	assert main(["del", pit, "User1"]) == 0
 
 
 def test_cli_version_flag(capsys: Any = None) -> None:
@@ -156,7 +114,7 @@ def test_read_operation_never_creates_directories(capsys: Any = None) -> None:
 
 		f_err = io.StringIO()
 		with contextlib.redirect_stderr(f_err):
-			code = main(["get", str(non_existent_pit), "GhostEntity"])
+			code = main(["history", str(non_existent_pit), "GhostEntity"])
 		assert code == 1
 		assert not non_existent_pit.exists(), "Read operation must never create ghost directory!"
 
@@ -170,24 +128,15 @@ def test_disallow_manual_modified_or_deleted(capsys: Any = None) -> None:
 	with tempfile.TemporaryDirectory() as tmp_dir:
 		pit_dir = Path(tmp_dir) / "TestPit"
 
-		# Setting Deleted must fail
-		f_err1 = io.StringIO()
-		with contextlib.redirect_stderr(f_err1):
-			code1 = main(["set", str(pit_dir), "Item1", '{"Deleted": true}'])
-		assert code1 == 1
-		assert "Use 'jpit del'" in f_err1.getvalue()
-
-		# Setting Modified must fail
-		f_err2 = io.StringIO()
-		with contextlib.redirect_stderr(f_err2):
-			code2 = main(["set", str(pit_dir), "Item1", '{"Modified": "2026-01-01T00:00:00Z"}'])
-		assert code2 == 1
-		assert "Cannot manually update protected attribute 'Modified'" in f_err2.getvalue()
+		for attribute, value in [("Deleted", True), ("Modified", "2026-01-01T00:00:00Z")]:
+			source = Path(tmp_dir) / "invalid.json"
+			source.write_text(json.dumps({"Id": "Item1", attribute: value}))
+			assert main(["seed", str(pit_dir), "--source", str(source)]) == 1
 
 		# del-prop on protected attribute must fail
 		f_err3 = io.StringIO()
 		with contextlib.redirect_stderr(f_err3):
-			code3 = main(["del-prop", str(pit_dir), "Item1", "Deleted"])
+			code3 = main(["delete-property", str(pit_dir), "Item1", "Deleted"])
 		assert code3 == 1
 		assert "Cannot tombstone protected attribute 'Deleted'" in f_err3.getvalue()
 
@@ -216,17 +165,10 @@ def test_cli_list_discovery_and_ls_alias() -> None:
 		assert "PitGamma" in out
 		assert "PitDelta" in out
 
-		# 2. Test jpit ls -r <root> --json
-		f_out_json = io.StringIO()
-		with contextlib.redirect_stdout(f_out_json):
-			code = main(["ls", "-r", str(root), "--json"])
-		assert code == 0
-		data = json.loads(f_out_json.getvalue())
-		assert data == [{
-			"cloud": None,
-			"path": str(root),
-			"pits": ["PitAlpha", "PitBeta", "PitDelta", "PitGamma"],
-		}]
+		alias = io.StringIO()
+		with contextlib.redirect_stdout(alias):
+			assert main(["ls", "-r", str(root)]) == 0
+		assert alias.getvalue() == out
 
 		# 3. Test jpit list -r <root> delegation
 		f_out_list = io.StringIO()
@@ -322,3 +264,31 @@ def test_discovery_output_uses_trailing_directory_separator() -> None:
 	directory = Path("/tmp/diagram-fixture")
 	output = _render_discovery("ParityCloud", directory, ["Activity"], all_clouds=True)
 	assert output == "[ParityCloud] (/tmp/diagram-fixture/): 1 pit(s) found\n  Activity"
+
+
+def test_pits_and_umgodi_query_the_same_fragments(tmp_path, capsys):
+	import shutil
+	import subprocess
+
+	assembly = Path(__file__).resolve().parents[2] / "PitSeeder/pits/bin/Debug/net10.0/pits.dll"
+	if not assembly.is_file() or not shutil.which("dotnet"):
+		pytest.skip("Requires the local pits candidate and the .NET runtime")
+	path = tmp_path / "Person" / "Person.pit"
+	path.parent.mkdir()
+	shutil.copyfile(FIXTURE_PATH, path)
+	before = path.read_bytes()
+	for args in (["grep", "^adele$", str(path), "-i", "-e", "-p", "Name", "--json"],
+			["history", str(path), "7010"]):
+		assert main(args) == 0
+		python_rows = json.loads(capsys.readouterr().out)
+		native = subprocess.run(["dotnet", str(assembly), *args], capture_output=True, text=True)
+		assert native.returncode == 0, native.stderr
+		native_rows = json.loads(native.stdout)
+		assert native_rows and len(native_rows) == len(python_rows)
+		for actual, expected in zip(native_rows, python_rows, strict=True):
+			# The serializers allow equivalent ISO timestamps with different fractional precision.
+			from umgodi.canonical import parse_iso_timestamp
+			assert parse_iso_timestamp(actual.pop("Modified")) == parse_iso_timestamp(expected.pop("Modified"))
+			assert actual == expected
+	assert path.read_bytes() == before
+	assert list(path.parent.iterdir()) == [path]

@@ -196,40 +196,40 @@ Create a JSON or JSON5 file (`people.json5`):
 
 Seed the entities into a Pit named `person`:
 ```bash
-jpit seed person people.json5
+jpit seed person --source people.json5 -r ./tenant
 ```
 
 ### Step 2: Read Entities
-Get one entity formatted as JSON:
+Read the fragment history for one entity:
 ```bash
-jpit get person Max
+jpit history person Max -r ./tenant
 ```
 
 Get only a specific property:
 ```bash
-jpit get person Max --property Email
+jpit export person --json -r ./tenant | jq '.[] | select(.Id == "Max") | .Email'
 ```
 
 List all active entities in the pit:
 ```bash
-jpit list person
+jpit list -r ./tenant
 ```
 
 ### Step 3: Sparse Mutations (Anti-Read-Modify-Write)
 Update attributes without rewriting the entire entity:
 
 ```bash
-jpit set person Max Phone "+27-82-111-2222"
+echo '{"Id":"Max","Phone":"+27-82-111-2222"}' | jpit add person --source - --patch -r ./tenant
 ```
 
 Add a nested object:
 ```bash
-jpit set person Max Address '{"City": "Cape Town", "Country": "South Africa"}'
+echo '{"Id":"Max","Address":{"City": "Cape Town", "Country": "South Africa"}}' | jpit add person --source - --patch -r ./tenant
 ```
 
 Tombstone an attribute:
 ```bash
-jpit del-prop person Max Email
+jpit delete-property person Max Email -r ./tenant
 ```
 
 ### Step 4: Semantic Search ("Pit-Grep")
@@ -258,12 +258,12 @@ Every Pit created or updated by Python `umgodi` is 100% binary- and schema-compa
 
 Write an entity attribute with Python `jpit`:
 ```bash
-jpit set person Max Status "Online"
+echo '{"Id":"Max","Status":"Online"}' | jpit add person --source - --patch -r ./tenant
 ```
 
 Read it immediately with C# `pits`:
 ```bash
-pits get person Max
+pits history person Max -r ./tenant
 ```
 
 Both engines enforce identical timestamp parsing, canonical key ordering, lease flag acquisition, receipt grace periods, and sparse delta projection.

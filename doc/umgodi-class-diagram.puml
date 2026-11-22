@@ -79,7 +79,17 @@ class ObjectDisposedError {
 }
 }
 package "umgodi.flags" {
+class MasterTicket {
+  state
+  owner
+  claimed
+  written
+  machine
+}
+MasterFlagFile --> MasterTicket
 class MasterFlagFile {
+  + ticket()
+  + write_ticket(ticket)
   TICKET_DURATION
   + __init__(pit_dir, name)
   + read()
@@ -212,7 +222,7 @@ class JsonPitBase {
   + master_flag()
   + process_flag()
   + running_on_master()
-  + try_acquire_master()
+  + try_acquire_master() : (bool, datetime | None)
   + try_release_process_window()
 }
 class PitMaintenanceOptions {
@@ -255,6 +265,16 @@ class PitMaintenanceResult {
   + succeeded()
   + to_dict()
 }
+enum PitSaveOutcome {
+  NothingToWrite
+  Wrote
+  PublishedAsChanges
+  PitNotLoaded
+}
+class PitSaveResult {
+  + outcome : PitSaveOutcome
+  + fragment_count : int
+}
 class Pit {
   _live_instances
   _registry_lock
@@ -276,7 +296,8 @@ class Pit {
   + rename_id(old_key, new_key, by)
   + has_dirty_items()
   + invalid()
-  + save(force, pretty)
+  + save(force, pretty) : PitSaveResult
+  + save_async(force, pretty) : PitSaveResult
   + merge_into_history(change_items)
   + merge_changes()
   - _store_canonical(force, pretty)

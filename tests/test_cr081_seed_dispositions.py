@@ -148,7 +148,7 @@ def test_cross_engine_seed_receipts_share_history(tmp_path, first_engine):
 		pytest.skip("Cross-engine CDAT requires the locally built pits candidate.")
 	source = tmp_path / "shared.json"
 	commands = {
-		"pits": ["dotnet", str(assembly), "seed", "Person", "--source", str(source), "-r", str(tmp_path) + "/", "-n"],
+		"pits": ["dotnet", str(assembly), "add", "Person", "--source", str(source), "-r", str(tmp_path) + "/", "-n"],
 		"jpit": [sys.executable, "-m", "umgodi.cli", "seed", "Person", "--source", str(source), "-r", str(tmp_path), "-n"],
 	}
 	second_engine = "jpit" if first_engine == "pits" else "pits"

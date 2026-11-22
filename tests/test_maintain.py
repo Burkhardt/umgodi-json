@@ -135,15 +135,19 @@ def test_maintain_prune_process_flags() -> None:
 
 		# 2. Active process flag (now - 10s)
 		active_flag = pit_dir / "Host-Proc-1111.flag"
-		active_flag.write_text(str(TimestampedValue("Host-Proc-1111", now - datetime.timedelta(seconds=10))) + "\n", encoding="utf-8")
+		active_flag.write_text(str(TimestampedValue("Host:Proc:1111", now - datetime.timedelta(seconds=10))) + "\n", encoding="utf-8")
 
 		# 3. Expired process flag younger than 1h (now - 15m)
 		young_expired = pit_dir / "Host-Proc-2222.flag"
-		young_expired.write_text(str(TimestampedValue("Host-Proc-2222", now - datetime.timedelta(minutes=15))) + "\n", encoding="utf-8")
+		young_expired.write_text(str(TimestampedValue("Host:Proc:2222", now - datetime.timedelta(minutes=15))) + "\n", encoding="utf-8")
+
+		# A PID mismatch cannot authorize deletion, regardless of age.
+		mismatch = pit_dir / "Host-Proc-4444.flag"
+		mismatch.write_text(str(TimestampedValue("Host:Proc:5555", now - datetime.timedelta(hours=2))))
 
 		# 4. Expired process flag older than 1h (now - 2h)
 		old_expired = pit_dir / "Host-Proc-3333.flag"
-		old_expired.write_text(str(TimestampedValue("Host-Proc-3333", now - datetime.timedelta(hours=2))) + "\n", encoding="utf-8")
+		old_expired.write_text(str(TimestampedValue("Host:Proc:3333", now - datetime.timedelta(hours=2))) + "\n", encoding="utf-8")
 
 		opts = PitMaintenanceOptions(
 			apply=True,
@@ -155,7 +159,8 @@ def test_maintain_prune_process_flags() -> None:
 			res = pit.maintain(opts)
 
 		assert res.process_flags_active == 1
-		assert res.process_flags_expired == 2
+		assert mismatch.exists()
+		assert res.process_flags_expired == 3
 		assert res.process_flags_pruned == 1
 		assert res.succeeded is True
 
@@ -379,9 +384,19 @@ def test_maintain_wwwa_cloud_not_hijacked_by_local_cwd_directory() -> None:
 			OsConfig.reset()
 
 
+@pytest.fixture
+def fast_tenant(tmp_path):
+	config = tmp_path / "JsonPit" / "timing.json5"
+	config.parent.mkdir()
+	config.write_text("{ SyncPitDurationSeconds:0, SyncFlagDurationSeconds:0, BufferSeconds:0 }")
+	tenant = tmp_path / "Tenant"
+	tenant.mkdir()
+	return tenant
+
+
 @pytest.mark.parametrize("age", [datetime.timedelta(minutes=5), datetime.timedelta(days=8)])
-def test_historical_save_publishes_current_lease_without_changing_history(tmp_path, age):
-	directory = tmp_path / "HistoricalSave"
+def test_historical_save_publishes_current_lease_without_changing_history(fast_tenant, age):
+	directory = fast_tenant / "HistoricalSave"
 	directory.mkdir()
 	old = utcnow() - age
 	with Pit.open(directory, autoload=False) as pit:
@@ -391,18 +406,18 @@ def test_historical_save_publishes_current_lease_without_changing_history(tmp_pa
 		pit.save(force=True)
 
 		master = MasterFlagFile(directory)
-		assert master.is_owned_by(pit.exact_process_identity)
-		assert not master.is_expired
+		assert master.ticket().owner == pit.exact_process_identity
+		assert master.ticket().state == "Returned"
 		assert before_save <= master.time <= utcnow()
-		assert master.time == pit.process_flag.time
+		assert master.ticket().written >= master.time
 		assert master.time > reader_checkpoint > old
 		assert pit["Past"].modified == old
 		data = json.loads(pit.canonical_file.read_text())
 		assert data[0][0]["Modified"] == format_iso_timestamp(old)
 
 
-def test_jpit_maintain_historical_store_retires_elapsed_receipt(tmp_path, capsys):
-	directory = tmp_path / "HistoricalCli"
+def test_jpit_maintain_historical_store_retires_elapsed_receipt(fast_tenant, capsys):
+	directory = fast_tenant / "HistoricalCli"
 	directory.mkdir()
 	old = format_iso_timestamp(utcnow() - datetime.timedelta(days=8))
 	first = PitItem({"Id": "First", "Modified": old}, invalidate=False)
@@ -414,21 +429,21 @@ def test_jpit_maintain_historical_store_retires_elapsed_receipt(tmp_path, capsys
 		second = PitItem({"Id": "Second", "Modified": old}, invalidate=False)
 		pending = ChangeFile.create(directory, second, "Peer-app-42")
 
-	assert main(["maintain", "HistoricalCli", "-r", str(tmp_path), "--apply", "--json"]) == 0
+	assert main(["maintain", "HistoricalCli", "-r", str(fast_tenant), "--apply", "--json"]) == 0
 	result = json.loads(capsys.readouterr().out)
 	assert result["CurrentMaster"] and result["CanonicalPersisted"]
 	assert result["ChangeFilesRemoved"] == result["ReceiptsRemoved"] == 1
 	assert result["Deferred"] == result["Failures"] == []
 	assert not change.exists() and not receipt.exists()
 	assert pending.is_file() and pending.with_suffix(".receipt").is_file()
-	assert not MasterFlagFile(directory).is_expired
+	assert MasterFlagFile(directory).ticket().state == "Returned"
 	data = json.loads((directory / "HistoricalCli.pit").read_text())
 	assert {fragment["Id"] for history in data for fragment in history} == {"First", "Second"}
 	assert all(fragment["Modified"] == old for history in data for fragment in history)
 
 
-def test_historical_store_renews_lease_and_retires_accounted_changes(tmp_path) -> None:
-	directory = tmp_path / "Historical"
+def test_historical_store_renews_lease_and_retires_accounted_changes(fast_tenant) -> None:
+	directory = fast_tenant / "Historical"
 	directory.mkdir()
 	old = format_iso_timestamp(utcnow() - datetime.timedelta(days=8))
 
@@ -439,8 +454,8 @@ def test_historical_store_renews_lease_and_retires_accounted_changes(tmp_path) -
 	change = publish("First")
 	with Pit.open(directory, autoload=False) as pit:
 		assert pit.maintain(apply=True).canonical_persisted
-		assert pit.master_flag.is_owned_by(pit.exact_process_identity)
-		assert pit.master_flag.time == pit.process_flag.time
+		assert pit.master_flag.ticket().state == "Returned"
+		assert pit.master_flag.ticket().written >= pit.master_flag.time
 		receipt = change.with_suffix(".receipt")
 		receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
 		pending = publish("Second")
@@ -449,14 +464,14 @@ def test_historical_store_renews_lease_and_retires_accounted_changes(tmp_path) -
 		assert result.change_files_removed == result.receipts_removed == 1
 		assert not change.exists() and not receipt.exists()
 		assert pending.is_file()
-		assert pit.master_flag.is_owned_by(pit.exact_process_identity)
+		assert pit.master_flag.ticket().state == "Returned"
 		data = json.loads(pit.canonical_file.read_text())
 		assert {frag["Id"] for history in data for frag in history} == {"First", "Second"}
 
 
-def test_maintenance_rechecks_owner_and_canonical_evidence_before_cleanup(tmp_path, monkeypatch):
+def test_maintenance_rechecks_owner_and_canonical_evidence_before_cleanup(fast_tenant, monkeypatch):
 	for failure in ("foreign-owner", "missing-history"):
-		directory = tmp_path / failure
+		directory = fast_tenant / failure
 		directory.mkdir()
 		change = ChangeFile.create(directory, PitItem({"Id": "Old"}), "Peer-app-42")
 		with Pit.open(directory, autoload=False) as pit:
@@ -485,8 +500,8 @@ def test_maintenance_rechecks_owner_and_canonical_evidence_before_cleanup(tmp_pa
 				assert f"Canonical pit does not yet account for {change.name}" in result.deferred
 
 
-def test_writable_open_retires_backlog_without_rewriting_canonical(tmp_path):
-	directory = tmp_path / "Backlog"
+def test_writable_open_preserves_backlog_until_maintenance(fast_tenant):
+	directory = fast_tenant / "Backlog"
 	directory.mkdir()
 	old = utcnow() - datetime.timedelta(days=2)
 	eligible = format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11))
@@ -506,12 +521,14 @@ def test_writable_open_retires_backlog_without_rewriting_canonical(tmp_path):
 	with Pit.open(directory) as opened:
 		assert len(opened) == 102
 		assert canonical.stat().st_mtime_ns == last_write
+		assert all(p.exists() for p in changes)
+		assert opened.maintain(apply=True).change_files_removed == 100
 		assert all(not p.exists() and not p.with_suffix(".receipt").exists() for p in changes[:100])
 		assert all(p.is_file() and p.with_suffix(".receipt").is_file() for p in changes[100:])
 
 
-def test_jpit_maintain_apply_respects_foreign_lease(tmp_path, capsys):
-	directory = tmp_path / "Busy"
+def test_jpit_maintain_apply_respects_foreign_lease(fast_tenant, capsys):
+	directory = fast_tenant / "Busy"
 	directory.mkdir()
 	item = PitItem({"Id": "Canonical"})
 	(directory / "Busy.pit").write_text(json.dumps([[item.to_dict()]]))
@@ -520,22 +537,22 @@ def test_jpit_maintain_apply_respects_foreign_lease(tmp_path, capsys):
 	receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
 	foreign = MasterFlagFile(directory)
 	foreign.update(originator="Peer-app-42")
-	assert main(["maintain", "Busy", "-r", str(tmp_path), "--apply", "--json"]) == 0
+	assert main(["maintain", "Busy", "-r", str(fast_tenant), "--apply", "--json"]) == 0
 	result = json.loads(capsys.readouterr().out)
 	assert not result["CurrentMaster"]
 	assert result["ChangeFilesRemoved"] == result["ReceiptsRemoved"] == 0
 	assert foreign.is_owned_by("Peer-app-42") and change.is_file() and receipt.is_file()
 
 
-def test_jpit_seed_ordinary_open_retires_accounted_change(tmp_path):
-	directory = tmp_path / "Person"
+def test_jpit_seed_ordinary_open_retires_accounted_change(fast_tenant):
+	directory = fast_tenant / "Person"
 	directory.mkdir()
 	item = PitItem({"Id": "Imported"})
 	(directory / "Person.pit").write_text(json.dumps([[item.to_dict()]]))
 	change = ChangeFile.create(directory, item, "Peer-app-42")
 	receipt = change.with_suffix(".receipt")
 	receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
-	source = tmp_path / "new-person.json"
+	source = fast_tenant / "new-person.json"
 	source.write_text('{"Id":"NewEntry"}')
-	assert main(["seed", "Person", "--source", str(source), "-r", str(tmp_path), "-n"]) == 0
+	assert main(["seed", "Person", "--source", str(source), "-r", str(fast_tenant), "-n"]) == 0
 	assert not change.exists() and not receipt.exists()

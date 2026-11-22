@@ -489,6 +489,10 @@ class PitItem(MutableMapping[str, Any]):
 		"""Marks this item as clean."""
 		self._dirty = False
 
+	def mark_pending(self) -> None:
+		"""Mark a historical import dirty while preserving its original timestamp."""
+		self._dirty = True
+
 	def invalidate(self, modified: datetime.datetime | None = None) -> None:
 		"""Marks this item as dirty and refreshes its Modified timestamp."""
 		self._dirty = True
@@ -541,7 +545,7 @@ class PitItem(MutableMapping[str, Any]):
 			if k.lower() in ("modified", "deleted"):
 				raise ProtectedAttributeError(
 					f"Cannot manually update protected attribute '{k}'. "
-					"Use 'jpit del' to delete an entity."
+					"Use 'jpit delete-item' to delete an entity."
 				)
 
 	def delete_property(self, property_name: str) -> None:

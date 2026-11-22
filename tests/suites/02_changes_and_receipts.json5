@@ -16,9 +16,9 @@
 			Name: "1. Create Base Pit via Python",
 			Steps: [
 				{
-					Command: "jpit -r {RootName} set Ledger Entry1 '{Account: \"Operating\", Amount: 1000.0}'",
+					Command: "echo '{Id: \"Entry1\", Account: \"Operating\", Amount: 1000.0}' | jpit add Ledger --source - -r {PitRoot}",
 					ExpectCode: 0,
-					ExpectStdoutContains: "Updated entity 'Entry1' in Pit 'Ledger'"
+					ExpectStdoutContains: "1 written, 0 unchanged"
 				},
 				{
 					Command: "pits export Ledger -r {PitRoot} --json -n",
@@ -31,7 +31,7 @@
 			Name: "2. Non-Master Peer Plants CR041 Clean Change File",
 			Steps: [
 				{
-					Command: "python3 -c \"from pathlib import Path; from jsonpit.canonical import utcnow, datetime_to_utc_ticks, format_iso_timestamp, canonical_json, sha256_hex; now = utcnow(); ticks = datetime_to_utc_ticks(now); content = canonical_json([{'Id': 'Entry2', 'Account': 'Reserve', 'Amount': 500.0, 'Modified': format_iso_timestamp(now), 'Deleted': False}]); sha = sha256_hex(content); name = f'{ticks}_Mzansi-peer-4242_{sha}.json'; p = Path('{PitRoot}/Ledger') / name; p.write_text(content, encoding='utf-8')\"",
+					Command: "python3 -c \"from pathlib import Path; from umgodi.canonical import utcnow, datetime_to_utc_ticks, format_iso_timestamp, canonical_json, sha256_hex; now = utcnow(); ticks = datetime_to_utc_ticks(now); content = canonical_json([{'Id': 'Entry2', 'Account': 'Reserve', 'Amount': 500.0, 'Modified': format_iso_timestamp(now), 'Deleted': False}]); sha = sha256_hex(content); name = f'{ticks}_Mzansi-peer-4242_{sha}.json'; p = Path('{PitRoot}/Ledger') / name; p.write_text(content, encoding='utf-8')\"",
 					ExpectCode: 0
 				}
 			]
@@ -70,7 +70,7 @@
 			Name: "5. Grace Expiry Pruning Removes Both Artifacts",
 			Steps: [
 				{
-					Command: "python3 -c \"import datetime; from pathlib import Path; from jsonpit.canonical import format_iso_timestamp; r = list(Path('{PitRoot}/Ledger').glob('*.receipt'))[0]; past = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=15); r.write_text(format_iso_timestamp(past), encoding='utf-8')\"",
+					Command: "python3 -c \"import datetime; from pathlib import Path; from umgodi.canonical import format_iso_timestamp; r = list(Path('{PitRoot}/Ledger').glob('*.receipt'))[0]; past = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=15); r.write_text(format_iso_timestamp(past), encoding='utf-8')\"",
 					ExpectCode: 0
 				},
 				{
@@ -82,7 +82,7 @@
 					ExpectCode: 0
 				},
 				{
-					Command: "jpit -r {RootName} get Ledger Entry2",
+					Command: "jpit grep '^Entry2$' Ledger -e -p Id -r {PitRoot} --jq '.[0]'",
 					ExpectCode: 0,
 					ExpectJson: {
 						Id: "Entry2",
@@ -97,11 +97,11 @@
 			Name: "6. Legacy 3-Segment Hashed Change Files Dual Discovery (CR041)",
 			Steps: [
 				{
-					Command: "python3 -c \"import datetime; from pathlib import Path; from jsonpit.canonical import utcnow, datetime_to_utc_ticks, format_iso_timestamp, canonical_json; now = utcnow(); ticks = datetime_to_utc_ticks(now); name = f'{ticks}_Mzansi-clean-5555.json'; p = Path('{PitRoot}/Ledger') / name; content = canonical_json([{'Id': 'Entry3', 'Account': 'Treasury', 'Amount': 750.0, 'Modified': format_iso_timestamp(now), 'Deleted': False}]); p.write_text(content, encoding='utf-8')\"",
+					Command: "python3 -c \"import datetime; from pathlib import Path; from umgodi.canonical import utcnow, datetime_to_utc_ticks, format_iso_timestamp, canonical_json; now = utcnow(); ticks = datetime_to_utc_ticks(now); name = f'{ticks}_Mzansi-clean-5555.json'; p = Path('{PitRoot}/Ledger') / name; content = canonical_json([{'Id': 'Entry3', 'Account': 'Treasury', 'Amount': 750.0, 'Modified': format_iso_timestamp(now), 'Deleted': False}]); p.write_text(content, encoding='utf-8')\"",
 					ExpectCode: 0
 				},
 				{
-					Command: "jpit -r {RootName} get Ledger Entry3",
+					Command: "jpit grep '^Entry3$' Ledger -e -p Id -r {PitRoot} --jq '.[0]'",
 					ExpectCode: 0,
 					ExpectJson: {
 						Id: "Entry3",

@@ -26,7 +26,7 @@ def test_cr049_a01_template_marker_id_rejected_with_exact_diagnostic() -> None:
 		f_out = io.StringIO()
 		f_err = io.StringIO()
 		with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-			rc = main(["put", "Object", str(seed_file), "-r", str(pit_root)])
+			rc = main(["add", "Object", "--source", str(seed_file), "-r", str(pit_root)])
 
 		assert rc == 1
 		err = f_err.getvalue()
@@ -48,7 +48,7 @@ def test_cr049_a02_batch_atomicity_rejects_all_before_mutation() -> None:
 		f_out = io.StringIO()
 		f_err = io.StringIO()
 		with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-			rc = main(["put", "Object", str(batch_file), "-r", str(pit_root)])
+			rc = main(["add", "Object", "--source", str(batch_file), "-r", str(pit_root)])
 
 		assert rc == 1
 		assert "error: Entity Id '<Pending>' contains a prohibited template marker ('{' or '<')." in f_err.getvalue()
@@ -68,7 +68,7 @@ def test_cr049_a03_braces_in_attributes_accepted() -> None:
 		f_out = io.StringIO()
 		f_err = io.StringIO()
 		with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-			rc = main(["put", "Object", str(payload_file), "-r", str(pit_root)])
+			rc = main(["add", "Object", "--source", str(payload_file), "-r", str(pit_root)])
 
 		assert rc == 0
 		with Pit.open(pit_root / "Object", read_only=True) as pit:

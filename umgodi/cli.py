@@ -12,16 +12,15 @@ import datetime
 import json
 import os
 import platform
-from inqaba import InqEntry, InqPath, InqRelPath, InqFile
+from inqaba import InqEntry, InqPath, InqRelPath
 import re
-import shutil
 import subprocess
 import sys
 from typing import Any
 
 from .audit import LogLevel, PitAudit, PitAuditEvent
 from .canonical import format_iso_timestamp, parse_iso_timestamp, utcnow
-from .config import InqConfig, loads_json5, missing_configuration_diagnostic
+from .config import InqConfig, missing_configuration_diagnostic
 from .exceptions import (
 	JsonPitError,
 	PitNotFoundError,
@@ -35,27 +34,22 @@ from .store import (
 	PitItem,
 	PitMaintenanceOptions,
 	PitMaintenanceResult,
+	PitSaveOutcome,
 	parse_and_validate_seed_payload,
 )
 from . import __version__
 
 
-def run_jq_filter(json_text: str, jq_filter: str) -> None:
-	"""Pipes json_text through the system jq executable."""
-	jq_bin = shutil.which("jq") or "/usr/bin/jq"
-	if not InqFile(jq_bin).is_file():
-		sys.stderr.write("[jpit] Error: 'jq' executable not found on system PATH.\n")
-		sys.stdout.write(json_text)
-		return
-
-	proc = subprocess.Popen(
-		[jq_bin, jq_filter],
-		stdin=subprocess.PIPE,
-		stdout=sys.stdout,
-		stderr=sys.stderr,
-		text=True,
-	)
-	proc.communicate(input=json_text)
+def run_jq_filter(json_text: str, jq_filter: str) -> int:
+	"""Pass JSON to jq and propagate its exit status."""
+	try:
+		result = subprocess.run(["jq", jq_filter], input=json_text, text=True, capture_output=True)
+	except FileNotFoundError:
+		sys.stderr.write("error: jq executable not found on PATH.\n")
+		return 1
+	sys.stdout.write(result.stdout)
+	sys.stderr.write(result.stderr)
+	return result.returncode
 
 
 def discover_pits(
@@ -67,71 +61,22 @@ def discover_pits(
 	Discovers one or multiple pits based on a target name or root.
 	If target is an entire root (e.g. 'AIA'), discovers all contained pits.
 	"""
-	# Check if target is current directory or default
 	if target in (".", ""):
-		cwd = resolve_command_pit_root(root=root, cloud=cloud, operation="grep") if root or cloud else InqEntry.cwd()
-		discovered_cwd: list[tuple[InqEntry, str]] = []
-		for child in sorted(cwd.iterdir()):
-			if child.is_dir():
-				pit_file = child / f"{child.name}.pit"
-				if pit_file.is_file():
-					discovered_cwd.append((child, child.name))
-			elif child.suffix.lower() == ".pit":
-				discovered_cwd.append((child.parent, child.stem))
-		if discovered_cwd or root or cloud:
-			return discovered_cwd
-
-	# Check if target is a single pit or an explicit directory
-	raw_str = str(target).strip()
-	is_explicit_path = (
-		raw_str.startswith(("/", "~", ".", "\\"))
-		or ("/" in raw_str and not raw_str.startswith("-"))
-		or ("\\" in raw_str)
-		or InqEntry(raw_str).exists()
-	)
-	if is_explicit_path:
-		try:
-			p_dir, p_name = resolve_pit_target(target, cloud=cloud, root=root)
-			if (p_dir / f"{p_name}.pit").is_file() or p_dir.is_dir():
-				return [(p_dir, p_name)]
-		except Exception:
-			pass
-		if InqEntry(target).is_dir():
-			discovered = []
-			for child in sorted(InqEntry(target).iterdir()):
-				if child.is_dir():
-					pit_file = child / f"{child.name}.pit"
-					if pit_file.is_file():
-						discovered.append((child, child.name))
-			if discovered:
-				return discovered
-
-	# Target requires cloud resolution
-	cfg = InqConfig.load()
-	if not cfg.is_config_loaded and not is_explicit_path:
-		raise PitNotFoundError(missing_configuration_diagnostic())
-
-	cloud_root = cfg.get_cloud_root(cloud)
-	candidates: list[InqEntry] = []
-	if cloud_root and not is_explicit_path and (cloud_root / InqRelPath(target)).is_dir():
-		candidates.append(cloud_root / InqRelPath(target))
-
-	discovered: list[tuple[InqEntry, str]] = []
-	for candidate_root in candidates:
-		for child in sorted(candidate_root.iterdir()):
-			if child.is_dir():
-				pit_file = child / f"{child.name}.pit"
-				if pit_file.is_file():
-					discovered.append((child, child.name))
-
-	if discovered:
-		return discovered
-
-	# Fallback single pit target
-	p_dir, p_name = resolve_pit_target(target, cloud=cloud, root=root)
-	if (p_dir / f"{p_name}.pit").is_file() or p_dir.is_dir():
-		return [(p_dir, p_name)]
-	return []
+		directory = resolve_command_pit_root(root=root, cloud=cloud, operation="grep") if root or cloud else InqEntry.cwd()
+	else:
+		target_dir, name = resolve_pit_target(target, root=root, cloud=cloud)
+		if (target_dir / f"{name}.pit").is_file():
+			return [(target_dir, name)]
+		directory = target_dir
+	if not directory.is_dir():
+		return []
+	pits = []
+	for child in sorted(directory.iterdir()):
+		if child.is_file() and child.suffix.lower() == ".pit":
+			pits.append((child.parent, child.stem))
+		elif child.is_dir() and (child / f"{child.name}.pit").is_file():
+			pits.append((child, child.name))
+	return pits
 
 
 def extract_cloud_and_root(argv: list[str]) -> tuple[str | None, str | None]:
@@ -141,10 +86,10 @@ def extract_cloud_and_root(argv: list[str]) -> tuple[str | None, str | None]:
 	i = 0
 	while i < len(argv):
 		arg = argv[i]
-		if arg in ("-c", "--cloud") and i + 1 < len(argv):
+		if arg in ("-c", "--cloud", "--cloudprovider") and i + 1 < len(argv):
 			cloud = argv[i + 1]
 			i += 2
-		elif arg.startswith("--cloud="):
+		elif arg.startswith(("--cloud=", "--cloudprovider=")):
 			cloud = arg.split("=", 1)[1]
 			i += 1
 		elif arg in ("-r", "--pitroot", "--root") and i + 1 < len(argv):
@@ -179,17 +124,11 @@ def cmd_grep(args: argparse.Namespace) -> int:
 	pattern_raw = args.pattern
 	target_raw = args.target
 
-	# Smart swap if user passed target first and pattern second:
-	if (
-		InqEntry(pattern_raw).exists()
-		or pattern_raw.endswith(".pit")
-		or ("/" in pattern_raw and not pattern_raw.startswith("-"))
-		or ("\\" in pattern_raw)
-	) and not InqEntry(target_raw).exists() and target_raw != ".":
-		pattern_raw, target_raw = target_raw, pattern_raw
-
 	at_time: datetime.datetime | None = None
 	if args.at:
+		if not re.search(r"(?:Z|[+-]\d{2}:\d{2})$", args.at, re.IGNORECASE):
+			sys.stderr.write("error: --at requires an offset-explicit ISO-8601 timestamp.\n")
+			return 1
 		at_time = parse_iso_timestamp(args.at)
 
 	flags = re.IGNORECASE if args.ignore_case else 0
@@ -214,48 +153,28 @@ def cmd_grep(args: argparse.Namespace) -> int:
 				read_only=True,
 				unflagged=True,
 			) as pit:
-				for key in pit.keys():
+				for key in sorted(pit.historic_items):
 					item = pit.get(key, at=at_time, with_deleted=args.with_deleted)
 					if item is None:
 						continue
 					item_dict = item.to_dict()
 
-					# Property-scoped search or broad search
-					matches_found: list[tuple[str, str]] = []
-					if args.property:
-						val = _get_nested(item_dict, args.property)
-						val_str = str(val) if val is not None else ""
-						if pattern.search(val_str):
-							matches_found.append((args.property, val_str))
-					else:
-						# Search all attributes
-						for k, v in item_dict.items():
-							v_str = str(v)
-							if pattern.search(v_str):
-								matches_found.append((k, v_str))
-
-					if matches_found:
-						record = copy.deepcopy(item_dict)
-						record["_pit"] = pit_name
-						matched_entities.append(record)
-
-						if not args.json:
-							label = record.get("Name") or record.get("Id")
-							print(f"\033[1;34m[{pit_name} : {record.get('Id')}]\033[0m \033[1m({label})\033[0m")
-							for prop_k, prop_v in matches_found[:4]:
-								highlighted = pattern.sub(
-									lambda m: f"\033[1;31m{m.group(0)}\033[0m",
-									prop_v.replace("\n", " ")[:120],
-								)
-								print(f"  \033[36m.{prop_k}\033[0m: {highlighted}")
-							print()
+					values = [_get_nested(item_dict, args.property)] if args.property else item_dict.values()
+					if not any(pattern.search(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, separators=(",", ":")))
+							for v in values if v is not None):
+						continue
+					record = item_dict | {"_pit": pit_name}
+					matched_entities.append(record)
+					if not (args.json or args.jq):
+						print(f"[{pit_name} : {key}] {record.get('Name') or key}")
 		except Exception as ex:
 			sys.stderr.write(f"[jpit] Error reading pit {pit_name}: {ex}\n")
+			return 1
 
-	if args.json:
+	if args.json or args.jq:
 		raw_json = json.dumps(matched_entities, indent=2, ensure_ascii=False)
 		if args.jq:
-			run_jq_filter(raw_json, args.jq)
+			return run_jq_filter(raw_json, args.jq)
 		else:
 			sys.stdout.write(raw_json + "\n")
 
@@ -271,33 +190,6 @@ def _get_nested(data: dict[str, Any], path: str) -> Any:
 		else:
 			return None
 	return curr
-
-
-def cmd_get(args: argparse.Namespace) -> int:
-	"""Retrieves an entity projection, optionally filtered by timestamp or jq."""
-	at_time = parse_iso_timestamp(args.at) if args.at else None
-	with Pit.open(
-		args.pit,
-		cloud=args.cloud,
-		root=args.root,
-		read_only=True,
-		unflagged=True,
-	) as pit:
-		if not pit.canonical_file.is_file():
-			sys.stderr.write(f"[jpit] Pit '{args.pit}' not found at {pit.pit_dir}.\n")
-			return 1
-
-		item = pit.get(args.id, at=at_time, with_deleted=args.with_deleted)
-		if item is None:
-			sys.stderr.write(f"[jpit] Entity '{args.id}' not found in Pit '{pit.pit_name}'.\n")
-			return 1
-
-		output = json.dumps(item.to_dict(), indent=2, ensure_ascii=False)
-		if args.jq:
-			run_jq_filter(output, args.jq)
-		else:
-			sys.stdout.write(output + "\n")
-	return 0
 
 
 def cmd_history(args: argparse.Namespace) -> int:
@@ -321,7 +213,7 @@ def cmd_history(args: argparse.Namespace) -> int:
 		fragments = [frag.to_dict() for frag in pit_items.history]
 		output = json.dumps(fragments, indent=2, ensure_ascii=False)
 		if args.jq:
-			run_jq_filter(output, args.jq)
+			return run_jq_filter(output, args.jq)
 		else:
 			sys.stdout.write(output + "\n")
 	return 0
@@ -425,14 +317,6 @@ def cmd_list_discovery(args: argparse.Namespace) -> int:
 		raise JsonPitError("--all scans DefaultCloudOrder and cannot be combined with -c or --cloud.")
 
 	discoveries = _discover_tenant_roots(root, cloud, all_clouds)
-	if getattr(args, "json", False):
-		payload = [
-			{"cloud": provider, "path": str(directory), "pits": pits}
-			for provider, directory, pits in discoveries
-		]
-		sys.stdout.write(json.dumps(payload, indent=2) + "\n")
-		return 0
-
 	if all_clouds:
 		for provider, directory, pits in discoveries:
 			sys.stdout.write(_render_discovery(provider, directory, pits, all_clouds=True, long_listing=long_listing) + "\n")
@@ -451,42 +335,16 @@ def cmd_list_discovery(args: argparse.Namespace) -> int:
 	return 0
 
 
-def cmd_list(args: argparse.Namespace) -> int:
-	"""Lists active entities in a Pit, or available pits if <pit> is omitted."""
-	if not getattr(args, "pit", None):
-		return cmd_list_discovery(args)
-
-	with Pit.open(
-		args.pit,
-		cloud=args.cloud,
-		root=args.root,
-		read_only=True,
-		unflagged=True,
-	) as pit:
-		if not pit.canonical_file.is_file():
-			sys.stderr.write(f"[jpit] Pit '{args.pit}' not found at {pit.pit_dir}.\n")
-			return 1
-
-		keys = list(pit.keys())
-		if args.json:
-			entities = [pit[k].to_dict() for k in keys]
-			output = json.dumps(entities, indent=2, ensure_ascii=False)
-			if args.jq:
-				run_jq_filter(output, args.jq)
-			else:
-				sys.stdout.write(output + "\n")
-			return 0
-
-		print(f"\033[1mPit: {pit.pit_name}\033[0m ({len(keys)} active entities) at {pit.pit_dir}\n")
-		for k in keys:
-			item = pit[k]
-			name = item.get("Name") or item.get("Alias") or k
-			cls_label = f"[{item.get('Class')}]" if item.get("Class") else ""
-			print(f"  • \033[1;34m{k:<24}\033[0m {name:<30} {cls_label}")
-	return 0
+def _save_mutation(pit: Pit, debug: bool) -> None:
+	had_changes = pit.invalid()
+	saved = pit.save()
+	if saved.outcome == PitSaveOutcome.PIT_NOT_LOADED or (had_changes and saved.outcome == PitSaveOutcome.NOTHING_TO_WRITE):
+		raise OSError(f"Could not persist {pit.pit_name}: {saved.outcome.value}.")
+	if debug:
+		sys.stderr.write(f"[{get_cli_prog_name()}] Save: {saved.outcome.value}, change-file fragments: {saved.fragment_count}\n")
 
 
-def cmd_put(args: argparse.Namespace) -> int:
+def cmd_seed(args: argparse.Namespace) -> int:
 	"""
 	Ingests entities from stdin, piped jq output, or a JSON5 file.
 	Adds entities cloud-safely with leasing.
@@ -494,11 +352,18 @@ def cmd_put(args: argparse.Namespace) -> int:
 	CR047: Strict patch mode via --require-existing or --patch.
 	"""
 	require_existing = bool(getattr(args, "require_existing", False) or getattr(args, "patch", False))
-	source_path_str = getattr(args, "source", None)
-	if not source_path_str and getattr(args, "source_opt", None):
-		source_path_str = args.source_opt
-	if not source_path_str:
-		source_path_str = "-"
+	if args.wwwa:
+		if args.pit or require_existing or args.source == "-":
+			raise JsonPitError("Bulk seed requires --wwwa --source <directory> and accepts neither a PitName nor --patch.")
+		for name in ("Person", "Object", "Place", "Activity"):
+			options = vars(args) | {"pit": name, "source": str(InqEntry(args.source) / f"{name}.json5"), "wwwa": False}
+			code = cmd_seed(argparse.Namespace(**options))
+			if code:
+				return code
+		return 0
+	if not args.pit:
+		raise JsonPitError("seed requires a PitName or --wwwa.")
+	source_path_str = args.source
 
 	# Read source content
 	content = ""
@@ -574,45 +439,12 @@ def cmd_put(args: argparse.Namespace) -> int:
 				written += 1
 			else:
 				unchanged.append(item.id)
-		pit.save()
+		_save_mutation(pit, getattr(args, "debug", False))
 
 	# The context exit has now completed persistence and required window cleanup.
 	if getattr(args, "debug", False):
 		sys.stderr.write(f"[jpit] Unchanged IDs: {json.dumps(unchanged, ensure_ascii=False, separators=(',', ':'))}\n")
 	print(f"[jpit] {len(items_to_add)} source items: {written} written, {len(unchanged)} unchanged (Pit '{args.pit}').")
-	return 0
-
-
-def cmd_set(args: argparse.Namespace) -> int:
-	"""Mutates or creates an entity using a JSON5 string payload."""
-	payload = loads_json5(args.payload)
-	if not isinstance(payload, dict):
-		sys.stderr.write("[jpit] Payload must evaluate to a JSON5 object.\n")
-		return 1
-
-	forbidden = [k for k in payload if k.lower() in ("modified", "deleted")]
-	if forbidden:
-		sys.stderr.write(
-			f"[jpit] Error: Cannot manually update protected attribute '{forbidden[0]}'. "
-			"Use 'jpit del' to delete an entity.\n"
-		)
-		return 1
-
-	with Pit.open(
-		args.pit,
-		cloud=args.cloud,
-		root=args.root,
-		retain_window=getattr(args, "retain_window", False),
-	) as pit:
-		existing = pit.get(args.id)
-		if existing is not None:
-			existing.set_property(payload)
-		else:
-			delta = dict(payload)
-			delta["Id"] = args.id
-			pit.add(PitItem(delta))
-
-	print(f"[jpit] Updated entity '{args.id}' in Pit '{args.pit}'.")
 	return 0
 
 
@@ -624,10 +456,11 @@ def cmd_delete(args: argparse.Namespace) -> int:
 		root=args.root,
 		retain_window=getattr(args, "retain_window", False),
 	) as pit:
-		success = pit.delete_item(args.id, by=args.by)
+		success = pit.delete_item(args.id)
 		if not success:
 			sys.stderr.write(f"[jpit] Entity '{args.id}' is already deleted or not found.\n")
 			return 1
+		_save_mutation(pit, getattr(args, "debug", False))
 
 	print(f"[jpit] Tombstoned entity '{args.id}' in Pit '{args.pit}'.")
 	return 0
@@ -638,7 +471,7 @@ def cmd_delete_prop(args: argparse.Namespace) -> int:
 	if args.property_path.lower() in ("id", "modified", "deleted"):
 		sys.stderr.write(
 			f"[jpit] Error: Cannot tombstone protected attribute '{args.property_path}'. "
-			"Use 'jpit del' to delete an entity.\n"
+			"Use 'jpit delete-item' to delete an entity.\n"
 		)
 		return 1
 
@@ -653,40 +486,19 @@ def cmd_delete_prop(args: argparse.Namespace) -> int:
 			sys.stderr.write(f"[jpit] Entity '{args.id}' not found.\n")
 			return 1
 		item.delete_property_path(args.property_path)
+		_save_mutation(pit, getattr(args, "debug", False))
 
 	print(f"[jpit] Tombstoned property '{args.property_path}' on entity '{args.id}'.")
-	return 0
-
-
-def cmd_rename(args: argparse.Namespace) -> int:
-	"""Migrates state from old_id to new_id and tombstones old_id."""
-	with Pit.open(
-		args.pit,
-		cloud=args.cloud,
-		root=args.root,
-		retain_window=getattr(args, "retain_window", False),
-	) as pit:
-		success = pit.rename_id(args.old_id, args.new_id, by=args.by)
-		if not success:
-			sys.stderr.write(
-				f"[jpit] Failed to rename '{args.old_id}' to '{args.new_id}' "
-				f"(check if '{args.old_id}' exists or '{args.new_id}' is already taken).\n"
-			)
-			return 1
-
-	print(f"[jpit] Renamed entity '{args.old_id}' -> '{args.new_id}' in Pit '{args.pit}'.")
 	return 0
 
 
 def cmd_export(args: argparse.Namespace) -> int:
 	"""Export projected state using pits-compatible directory and stdout modes."""
 	out_dir = getattr(args, "out_dir", None)
-	legacy_file = getattr(args, "out", None)
-	json_mode = bool(getattr(args, "json", False))
-	if sum((bool(out_dir), bool(legacy_file), json_mode)) != 1:
-		if not (args.jq and not out_dir and not legacy_file and not json_mode):
-			sys.stderr.write("error: export requires exactly one output mode: --json or --out-dir <dir>.\n")
-			return 1
+	json_mode = bool(args.json)
+	if bool(out_dir) == json_mode:
+		sys.stderr.write("error: export requires exactly one output mode: --json or --out-dir <dir>.\n")
+		return 1
 	wwwa = bool(getattr(args, "wwwa", False))
 	if wwwa == bool(args.pit):
 		sys.stderr.write("error: export accepts either <PitName> or --wwwa.\n")
@@ -747,52 +559,8 @@ def cmd_export(args: argparse.Namespace) -> int:
 		destination = directory / f"{export_name}.json"
 		destination.write_text(raw_json, encoding="utf-8")
 		print(f"[jpit] Exported {export_name} to {destination}")
-	elif legacy_file:
-		destination = InqEntry(legacy_file).expanduser()
-		destination.write_text(raw_json, encoding="utf-8")
-		print(f"[jpit] Exported {export_name} to {destination}")
-	elif args.jq:
-		run_jq_filter(raw_json, args.jq)
 	else:
 		sys.stdout.write(raw_json + "\n")
-	return 0
-
-
-def cmd_status(args: argparse.Namespace) -> int:
-	"""Inspects master lease status, process windows, and pending change files."""
-	with Pit.open(
-		args.pit,
-		cloud=args.cloud,
-		root=args.root,
-		read_only=True,
-		unflagged=True,
-	) as pit:
-		print(f"\033[1m=== Pit Status: {pit.pit_name} ===\033[0m")
-		print(f"InqEntry: {pit.pit_dir}")
-		print(f"Canonical file: {pit.canonical_file.name} (exists={pit.canonical_file.is_file()})")
-		print(f"Active entities: {len(pit)}")
-
-		# Master flag inspection
-		master = pit.master_flag
-		print(f"\n\033[1mMaster Lease:\033[0m")
-		print(f"  Originator: {master.originator or 'None'}")
-		print(f"  Time: {format_iso_timestamp(master.time)}")
-		print(f"  Is Expired: {master.is_expired}")
-
-		# Process flags
-		proc_flags = list(pit.pit_dir.glob("*.flag"))
-		print(f"\n\033[1mFlag Files ({len(proc_flags)}):\033[0m")
-		for pf in proc_flags:
-			print(f"  • {pf.name}")
-
-		# Change files
-		change_files = [p for p in pit.pit_dir.glob("*.json") if p.name != pit.canonical_file.name]
-		print(f"\n\033[1mPending Change Files ({len(change_files)}):\033[0m")
-		for cf in change_files[:5]:
-			print(f"  • {cf.name}")
-		if len(change_files) > 5:
-			print(f"  ... and {len(change_files) - 5} more.")
-
 	return 0
 
 
@@ -1172,23 +940,20 @@ def print_top_help(
 	prog = get_cli_prog_name()
 	commands_spec = [
 		("grep", "<pattern> [<target>] [-i] [-e] [-p <prop>] [--at <ts>] [--json] [--jq <expr>]"),
-		("get", "<PitName> <ItemId> [--at <ts>] [--jq <expr>] [--with-deleted]"),
 		("history", "<PitName> <ItemId> [--jq <expr>]"),
-		("list", "[<PitName>] [-r <tenant|path>] [-c <cloud>] [-a|--all] [-l|--long] [--json]"),
-		("put", "<PitName> [<source>] [-s <source>] [-x|--id-exists|--patch] (alias: seed)"),
-		("set", "<PitName> <ItemId> <payload>"),
-		("del", "<PitName> <ItemId> [--by <author>]"),
-		("del-prop", "<PitName> <ItemId> <PropertyPath>"),
-		("rename", "<PitName> <OldId> <NewId> [--by <author>]"),
+		("list", "-r <tenant|path> [-c <cloud>] [-a|--all] [-l|--long]"),
+		("seed", "(<PitName>|--wwwa) --source <file|-> [-x|--id-exists|--patch] (alias: add)"),
+		("delete-item", "<PitName> <ItemId> (alias: del)"),
+		("delete-property", "<PitName> <ItemId> <PropertyPath> (alias: del-prop)"),
 		("export", "(<PitName>|--wwwa) (--out-dir <dir>|--json) [--at <ISO-8601 timestamp>]"),
-		("status", "<PitName>"),
-		("maintain", "(<PitName>|--wwwa) [--apply] [--prune-process-flags --older-than <dur>] [--json]"),
+		("maintain", "(<PitName>|--wwwa) [--apply] [--archive-events] [--prune-process-flags --older-than <dur>] [--json]"),
 		("audit", "(<PitName>|--wwwa) [--machine <all|local|name>] [--level <severity>] [--json]"),
 	]
 	items = [help_style.Row("Commands:", Icons.INFO,
-		"grep, get, history, list, put, set, del, del-prop, rename, export, status, maintain, audit")]
+		"list, seed, export, grep, history, audit, delete-property, delete-item, maintain")]
 	items.extend(help_style.Row(f"  {prog} {cmd} {spec}", "", "") for cmd, spec in commands_spec)
 	items.extend([
+		help_style.Row("  seed/add preserves omitted properties. Use del-prop to remove a property.", "", ""),
 		help_style.Row("Options:", "", ""),
 		help_style.Row("-h, --help", Icons.HELP, "print out all options"),
 		help_style.Row("-v, --version", Icons.INFO, "print version info"),
@@ -1262,13 +1027,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 	if not nologo:
 		print_banner(use_color=use_color)
 
-	alias_map = {
-		"ls": "list",
-		"delete": "del",
-		"delete-item": "del",
-		"delete-property": "del-prop",
-		"seed": "put",
-	}
+	alias_map = {"ls": "list", "add": "seed", "del": "delete-item", "del-prop": "delete-property"}
 	canonical_cmd = alias_map.get(cmd, cmd)
 
 	help_data: dict[str, dict[str, Any]] = {
@@ -1289,19 +1048,6 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 				("--with-deleted", "Include tombstoned entities"),
 			],
 		},
-		"get": {
-			"usage": "<PitName> <ItemId> [options]",
-			"desc": "Get entity projected state.",
-			"args": [
-				("PitName", "Pit name or file path"),
-				("ItemId", "Entity ID to retrieve"),
-			],
-			"opts": [
-				("--at <timestamp>", "Point-in-time timestamp"),
-				("--jq <expr>", "Convenience pipe through jq filter"),
-				("--with-deleted", "Include tombstoned entities"),
-			],
-		},
 		"history": {
 			"usage": "<PitName> <ItemId> [options]",
 			"desc": "Dump immutable fragment history for an entity.",
@@ -1314,74 +1060,45 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 		},
 		"list": {
-			"usage": "-r <tenant|path> [-c <cloud>] [-a|--all] [-l|--long] [<PitName>] [--json] [--jq <expr>]",
-			"desc": "List active entities in a Pit, or available pits in -r root if <PitName> is omitted.",
-			"args": [
-				("PitName", "Pit name or file path (optional)"),
-			],
-			"opts": [
-				("--json", "Output JSON array"),
-				("--jq <expr>", "Convenience pipe through jq filter"),
-			],
+			"usage": "-r <tenant|path> [-c <cloud>] [-a|--all] [-l|--long]",
+			"desc": "Discover pits beneath the selected tenant or directory.",
+			"args": [],
+			"opts": [("-a, --all", "Search all configured clouds"), ("-l, --long", "Show size and modification time")],
 		},
-		"put": {
-			"usage": "<PitName> [<source>] [-s <source>] [--id-exists] [--patch] [options]",
-			"desc": "Ingest JSON5 entities from file or stdin pipe (alias: seed).",
+		"seed": {
+			"usage": "(<PitName>|--wwwa) --source <file|-> [--id-exists] [--patch] [options]",
+			"desc": "seed/add merges supplied properties. Omitted properties are preserved. Use del-prop to remove a property.",
 			"args": [
 				("PitName", "Pit name or file path"),
-				("source", "Source file or '-' for stdin (default: '-')"),
+				("source", "Source file or '-' for stdin"),
 			],
 			"opts": [
 				("-s, --source <file>", "Source file for import (JSON or JSON5)"),
 				("-x, --id-exists", "seed only: require every ID to exist in living state"),
 				("--patch", "Alias for --id-exists"),
 			],
-			"aliases": ["seed"],
+			"aliases": ["add"],
 		},
-		"set": {
-			"usage": "<PitName> <ItemId> <payload> [options]",
-			"desc": "Set or patch entity with JSON5 payload.",
-			"args": [
-				("PitName", "Pit name or file path"),
-				("ItemId", "Entity ID"),
-				("payload", "JSON5 dictionary payload"),
-			],
-			"opts": [],
-		},
-		"del": {
-			"usage": "<PitName> <ItemId> [--by <author>] [options]",
-			"desc": "Tombstone an entity (aliases: delete-item, delete).",
+		"delete-item": {
+			"usage": "<PitName> <ItemId> [options]",
+			"desc": "Tombstone an entity.",
+			"aliases": ["del"],
 			"args": [
 				("PitName", "Pit name or file path"),
 				("ItemId", "Entity ID to tombstone"),
 			],
-			"opts": [
-				("--by <author>", "Audited author identity"),
-			],
-			"aliases": ["delete-item", "delete"],
+			"opts": [],
 		},
-		"del-prop": {
+		"delete-property": {
 			"usage": "<PitName> <ItemId> <PropertyPath> [options]",
-			"desc": "Tombstone a property path (alias: delete-property).",
+			"desc": "Tombstone a property path.",
+			"aliases": ["del-prop"],
 			"args": [
 				("PitName", "Pit name or file path"),
 				("ItemId", "Entity ID"),
 				("PropertyPath", "Dot-delimited property path (e.g. What.Chat)"),
 			],
 			"opts": [],
-			"aliases": ["delete-property"],
-		},
-		"rename": {
-			"usage": "<PitName> <OldId> <NewId> [--by <author>] [options]",
-			"desc": "Migrate entity to new ID and tombstone old ID.",
-			"args": [
-				("PitName", "Pit name or file path"),
-				("OldId", "Current entity ID"),
-				("NewId", "New entity ID"),
-			],
-			"opts": [
-				("--by <author>", "Audited author identity"),
-			],
 		},
 		"export": {
 			"usage": "(<PitName>|--wwwa) (--out-dir <dir>|--json) [--at <ISO-8601 timestamp>] [options]",
@@ -1394,16 +1111,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 				("--json", "Write JSON to stdout"),
 				("--wwwa", "Export all four WWWA pits with resolved references"),
 				("--at <timestamp>", "Project state as of timestamp"),
-				("--jq <expr>", "Convenience pipe through jq filter"),
 			],
-		},
-		"status": {
-			"usage": "<PitName> [options]",
-			"desc": "Inspect Pit directory lease and flags.",
-			"args": [
-				("PitName", "Pit name or file path"),
-			],
-			"opts": [],
 		},
 		"maintain": {
 			"usage": "(<PitName> | --wwwa) [--apply] [--prune-process-flags --older-than <dur>] [--repair-legacy-extensions] [--archive-events] [--json] [options]",
@@ -1547,7 +1255,7 @@ def build_parser(prog: str | None = None) -> JsonPitArgumentParser:
 
 	common_parser = JsonPitArgumentParser(add_help=False)
 	common_parser.add_argument(
-		"-c", "--cloud",
+		"-c", "--cloud", "--cloudprovider",
 		default=argparse.SUPPRESS,
 		help="Cloud drive (OneDrive, Dropbox, etc.)",
 	)
@@ -1598,14 +1306,6 @@ def build_parser(prog: str | None = None) -> JsonPitArgumentParser:
 	p_grep.add_argument("--jq", help="Convenience pipe through jq filter")
 	p_grep.add_argument("--with-deleted", action="store_true", help="Include tombstoned entities")
 
-	# get
-	p_get = subparsers.add_parser("get", parents=[common_parser], help="Get entity projected state")
-	p_get.add_argument("pit", help="Pit name")
-	p_get.add_argument("id", help="Entity ID")
-	p_get.add_argument("--at", help="Point-in-time timestamp")
-	p_get.add_argument("--jq", help="Convenience pipe through jq filter")
-	p_get.add_argument("--with-deleted", action="store_true", help="Include tombstoned entities")
-
 	# history
 	p_hist = subparsers.add_parser("history", parents=[common_parser], help="Dump immutable fragment history for an entity")
 	p_hist.add_argument("pit", help="Pit name")
@@ -1614,69 +1314,50 @@ def build_parser(prog: str | None = None) -> JsonPitArgumentParser:
 
 	# list
 	p_list = subparsers.add_parser("list", aliases=["ls"], parents=[common_parser], help="List active entities or discover tenant pits")
-	p_list.add_argument("pit", nargs="?", default=None, help="Pit name (optional: if omitted, lists available pits in -r root)")
-	p_list.add_argument("--json", action="store_true", help="Output JSON array")
-	p_list.add_argument("--jq", help="Convenience pipe through jq filter")
 	p_list.add_argument("-a", "--all", action="store_true", help="Discover the tenant in every DefaultCloudOrder provider")
 	p_list.add_argument("-l", "--long", action="store_true", help="Include each pit file's size and last modification time")
 
-	# put / seed
-	p_put = subparsers.add_parser(
-		"put",
-		aliases=["seed"],
+	# seed / add
+	p_seed = subparsers.add_parser(
+		"seed",
+		aliases=["add"],
 		parents=[common_parser],
-		help="Ingest JSON5 entities from file or stdin pipe (alias: seed)",
+		help="Ingest JSON5 entities from file or stdin pipe (alias: add)",
 	)
-	p_put.add_argument("pit", help="Pit name")
-	p_put.add_argument("source", nargs="?", default=None, help="Source file or '-' for stdin")
-	p_put.add_argument("-s", "--source", dest="source_opt", help="Source file for import (JSON or JSON5)")
-	p_put.add_argument(
+	p_seed.add_argument("pit", nargs="?", help="Pit name")
+	p_seed.add_argument("--wwwa", action="store_true", help="Seed all four WWWA pits from a directory")
+	p_seed.add_argument("-s", "--source", required=True, help="Source file for import (JSON or JSON5)")
+	p_seed.add_argument(
 		"-x", "--id-exists", "--require-exist", "--require-existing", dest="require_existing",
 		action="store_true",
 		default=False,
 		help="CR047: Strictly require all incoming entity IDs to exist in the Pit",
 	)
-	p_put.add_argument(
+	p_seed.add_argument(
 		"--patch",
 		action="store_true",
 		default=False,
 		help="Alias for --id-exists",
 	)
 
-	# set
-	p_set = subparsers.add_parser("set", parents=[common_parser], help="Set or patch entity with JSON5 payload")
-	p_set.add_argument("pit", help="Pit name")
-	p_set.add_argument("id", help="Entity ID")
-	p_set.add_argument("payload", help="JSON5 dictionary payload")
-
 	# del / delete-item
 	p_del = subparsers.add_parser(
-		"del",
-		aliases=["delete-item", "delete"],
+		"delete-item", aliases=["del"],
 		parents=[common_parser],
-		help="Tombstone an entity (aliases: delete-item, delete)",
+		help="Tombstone an entity",
 	)
 	p_del.add_argument("pit", help="Pit name")
 	p_del.add_argument("id", help="Entity ID")
-	p_del.add_argument("--by", help="Audited author identity")
 
 	# del-prop / delete-property
 	p_delprop = subparsers.add_parser(
-		"del-prop",
-		aliases=["delete-property"],
+		"delete-property", aliases=["del-prop"],
 		parents=[common_parser],
-		help="Tombstone a property path (alias: delete-property)",
+		help="Tombstone a property path",
 	)
 	p_delprop.add_argument("pit", help="Pit name")
 	p_delprop.add_argument("id", help="Entity ID")
 	p_delprop.add_argument("property_path", help="Dot-delimited property path")
-
-	# rename
-	p_rename = subparsers.add_parser("rename", parents=[common_parser], help="Migrate entity to new ID and tombstone old ID")
-	p_rename.add_argument("pit", help="Pit name")
-	p_rename.add_argument("old_id", help="Current entity ID")
-	p_rename.add_argument("new_id", help="New entity ID")
-	p_rename.add_argument("--by", help="Audited author identity")
 
 	# export
 	p_export = subparsers.add_parser("export", parents=[common_parser], help="Export entities as JSON array")
@@ -1684,13 +1365,7 @@ def build_parser(prog: str | None = None) -> JsonPitArgumentParser:
 	p_export.add_argument("--wwwa", action="store_true", help="Export all four WWWA pits")
 	p_export.add_argument("--out-dir", help="Export directory for <PitName>.json")
 	p_export.add_argument("--json", action="store_true", help="Write JSON to stdout")
-	p_export.add_argument("--out", help=argparse.SUPPRESS)
 	p_export.add_argument("--at", help="Project state as of timestamp")
-	p_export.add_argument("--jq", help="Convenience pipe through jq filter")
-
-	# status
-	p_status = subparsers.add_parser("status", parents=[common_parser], help="Inspect Pit directory lease and flags")
-	p_status.add_argument("pit", help="Pit name")
 
 	# maintain
 	p_maintain = subparsers.add_parser(
@@ -1732,11 +1407,7 @@ def main(argv: list[str] | None = None) -> int:
 	cloud, root = extract_cloud_and_root(argv)
 	wwwa = "--wwwa" in argv
 
-	known_subcommands = {
-		"grep", "get", "history", "list", "ls", "put", "seed", "set", "del",
-		"delete", "delete-item", "del-prop", "delete-property",
-		"rename", "export", "status", "maintain", "audit",
-	}
+	known_subcommands = {"list", "ls", "seed", "add", "export", "grep", "history", "audit", "maintain", "delete-item", "delete-property", "del", "del-prop"}
 
 	# Quick check for top-level help or no arguments
 	if len(argv) == 0 or (len(argv) == 1 and argv[0] in ("-h", "--help")):
@@ -1764,6 +1435,10 @@ def main(argv: list[str] | None = None) -> int:
 
 	parser = build_parser()
 	args = parser.parse_args(argv)
+	if args.command == "del":
+		args.command = "delete-item"
+	elif args.command == "del-prop":
+		args.command = "delete-property"
 
 	if not hasattr(args, "cloud"):
 		args.cloud = None
@@ -1772,21 +1447,14 @@ def main(argv: list[str] | None = None) -> int:
 
 	dispatch = {
 		"grep": cmd_grep,
-		"get": cmd_get,
 		"history": cmd_history,
-		"list": cmd_list,
-		"ls": cmd_list,
-		"put": cmd_put,
-		"seed": cmd_put,
-		"set": cmd_set,
-		"del": cmd_delete,
-		"delete": cmd_delete,
+		"list": cmd_list_discovery,
+		"ls": cmd_list_discovery,
+		"seed": cmd_seed,
+		"add": cmd_seed,
 		"delete-item": cmd_delete,
-		"del-prop": cmd_delete_prop,
 		"delete-property": cmd_delete_prop,
-		"rename": cmd_rename,
 		"export": cmd_export,
-		"status": cmd_status,
 		"maintain": cmd_maintain,
 		"audit": cmd_audit,
 	}
@@ -1797,7 +1465,7 @@ def main(argv: list[str] | None = None) -> int:
 		return 1
 
 	try:
-		mutating_commands = {"put", "seed", "set", "del", "delete", "delete-item", "del-prop", "delete-property", "rename"}
+		mutating_commands = {"seed", "add", "delete-item", "delete-property"}
 		if args.command in mutating_commands or (args.command == "maintain" and args.apply):
 			_require_explicit_mutation_location(args)
 		if getattr(args, "debug", False):

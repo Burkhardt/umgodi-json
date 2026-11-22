@@ -38,7 +38,7 @@ def resolve_pit_target(
 	"""
 	raw_str = str(name_or_path).strip()
 
-	if is_explicit_path(name_or_path):
+	if is_explicit_path(name_or_path) or raw_str.lower().endswith(".pit"):
 		resolved = InqEntry(raw_str).expanduser().absolute()
 		if resolved.suffix.lower() == ".pit":
 			pit_dir = resolved.parent

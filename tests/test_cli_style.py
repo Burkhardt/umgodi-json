@@ -71,7 +71,7 @@ def test_cloud_badges_keep_the_positional_palette() -> None:
 def test_redirected_help_is_plain_and_aligned(monkeypatch) -> None:
 	monkeypatch.delenv("NO_COLOR", raising=False)
 	monkeypatch.setenv("TERM", "xterm-256color")
-	for args in [["-h", "-n"], ["put", "-h", "-n"], ["--retain-window", "-h", "-n"]]:
+	for args in [["-h", "-n"], ["add", "-h", "-n"], ["--retain-window", "-h", "-n"]]:
 		output = io.StringIO()
 		with contextlib.redirect_stdout(output): assert main(args) == 0
 		assert "\t" not in output.getvalue()
@@ -96,10 +96,10 @@ def test_color_controls(monkeypatch) -> None:
 def test_shared_option_aliases_and_hidden_compatibility_names() -> None:
 	from umgodi.cli import build_parser, extract_cloud_and_root
 	for option in ["-w", "--window", "--retain-window"]:
-		for args in [[option, "status", "Person"], ["status", "Person", option]]:
+		for args in [[option, "history", "Person", "Item1"], ["history", "Person", "Item1", option]]:
 			assert build_parser().parse_args(args).retain_window
 	for option in ["-x", "--id-exists", "--require-exist", "--require-existing"]:
-		assert build_parser().parse_args(["seed", "Person", "-", option]).require_existing
+		assert build_parser().parse_args(["seed", "Person", "--source", "-", option]).require_existing
 	assert build_parser().parse_args(["list", "--pitroot", "/example"]).root == "/example"
 	assert extract_cloud_and_root(["--pitroot=/example"]) == (None, "/example")
 	for args in [["-h", "-n"], ["seed", "-h", "-n"]]:
@@ -132,7 +132,10 @@ def test_help_uses_invoked_command(prog, other, monkeypatch, capsys) -> None:
 		(["-h"], f"{prog} CLI (v{__version__}) on "),
 		(["Activity", "-h"], f"'{prog} seed Activity "),
 		(["ls", "-h"], f"{prog} ls "),
-		(["help", "seed"], f"Usage: {prog} put "),
+		(["help", "seed"], f"Usage: {prog} seed "),
+		(["add", "-h"], "Use del-prop to remove a property."),
+		(["del", "-h"], f"Usage: {prog} delete-item "),
+		(["del-prop", "-h"], f"Usage: {prog} delete-property "),
 		(["--retain-window", "-h"], f"every finite {prog} operation"),
 	]:
 		assert main(args) == 0

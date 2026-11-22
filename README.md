@@ -51,6 +51,8 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 
 ---
 
+Seeding merges supplied properties and preserves omitted ones. Use `del-prop` (`delete-property`) to remove a property or `del` (`delete-item`) to remove the whole item.
+
 ## CR081 seed disposition receipt
 
 Seed receipts count source entries, including repeated IDs, using the engine's
@@ -82,7 +84,7 @@ JsonPit-compatible heritage is described above rather than hidden behind the
 old project name.
 
 Without `-c`, `jpit export Object -r AfricaStage --out-dir ./exports` resolves
-the bare tenant name beneath the configured default cloud, matching `status`.
+the bare tenant name beneath the configured default cloud, matching `history`.
 Use `-c <provider>` to select a cloud explicitly, or `-r ./AfricaStage` / an
 absolute path for local storage. A same-named local directory does not override
 a bare tenant name. This also applies to report-only WWWA maintenance, audit,
@@ -215,17 +217,14 @@ jpit grep "Burkhardt" --root AIA
 # Pipe search results directly into jq:
 jpit grep "Jazz" Person --json | jq '.[].Genre'
 
-# Inspect entity living state or full immutable history:
-jpit get Person Rainer
-jpit history Person Rainer
+# Inspect current state and fragment history:
+jpit export Person -r ./AfricaStage --json | jq '.[] | select(.Id == "Rainer")'
+jpit history Person Rainer -r ./AfricaStage
 
-# Pipe JSON5 / JSON mutations directly into a pit:
-cat update.json5 | jpit put Person
-echo '{id: "AlanKay", dynabook: true}' | jpit put Person
-
-# Set individual properties or tombstone an entity:
-jpit set Person AlanKay Status "Visionary"
-jpit del Person ObsoleteEntity
+# Add sparse fragments from a file or stdin. Existing attributes survive omission.
+jpit seed Person -r ./AfricaStage --source update.json5
+echo '{Id: "AlanKay", Status: "Visionary"}' | jpit add Person -r ./AfricaStage --source - --patch
+jpit delete-item Person ObsoleteEntity -r ./AfricaStage
 
 # Automated maintenance and dead flag pruning (100% C# pits maintain parity):
 jpit maintain Activity -c OneDrive -r AIA
@@ -272,7 +271,7 @@ Person/
 To ensure 100% interoperability with C# `JsonPit`, this repository includes a dedicated **Differential Cross-Testing Suite** (`tests/suites/*.json5` & `tests/sequence_runner.py`). The test harness orchestrates bidirectional interaction between the Python runtime (`jpit`) and the C# CLI binary (`pits`):
 
 - **Python Writes $\rightarrow$ C# Validates:** Python writes `.pit` snapshots and sparse changes; C# `pits export` and `pits verify` assert physical byte formatting, timestamp precision, and schema invariants.
-- **C# Writes $\rightarrow$ Python Validates:** C# `pits seed`, `delete-property`, and `maintain` mutate state; Python `jpit get`, `history`, and `PitStore` verify projections and receipt mechanics.
+- **C# Writes $\rightarrow$ Python Validates:** C# `pits seed`, `delete-property`, and `maintain` mutate state; Python `jpit export`, `history`, and `PitStore` verify projections and receipt mechanics.
 - **7 Parity Suites (41 Cross-Engine Steps):** Covers persistence CRUD, CR041 clean change files, receipt grace periods, nested property tombstones, compaction/events archiving, process flag lifecycles, and split-master partition recovery.
 
 For full suite descriptions, architecture diagrams, and certification tables, see:  

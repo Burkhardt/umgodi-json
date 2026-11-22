@@ -51,10 +51,9 @@ def test_directory_export_and_timestamp_use_default_cloud(clouds, tmp_path, caps
 
 
 @pytest.mark.parametrize("command", [
-	["get", "Object", "CloudItem"], ["history", "Object", "CloudItem"],
-	["list", "Object", "--json"], ["status", "Object"],
+	["history", "Object", "CloudItem"],
 	["grep", "CloudItem", "Object", "--json"], ["grep", "CloudItem", "--json"],
-	["list", "--json"], ["export", "Object", "--json"],
+	["list"], ["export", "Object", "--json"],
 	["audit", "--wwwa", "--json"], ["maintain", "--wwwa", "--json"],
 	["audit", "Object", "--json"], ["maintain", "Object", "--json"],
 ])
@@ -99,7 +98,7 @@ def test_explicit_local_roots_work_without_config(tmp_path, monkeypatch, capsys,
 	assert json.loads(capsys.readouterr().out)[0]["Id"] == "LocalItem"
 
 
-@pytest.mark.parametrize("output_mode", ["json", "directory", "file", "jq"])
+@pytest.mark.parametrize("output_mode", ["json", "directory"])
 @pytest.mark.parametrize("source_form", ["tenant", "directory", "file"])
 def test_missing_snapshot_fails_without_output_or_destination_changes(clouds, tmp_path, capsys, output_mode, source_form):
 	one, _, _ = clouds
@@ -168,11 +167,9 @@ def test_no_cloud_never_falls_back_to_local_tenant(tmp_path, monkeypatch, capsys
 
 
 @pytest.mark.parametrize("command", [
-	["seed", "Object", "--source", "-"], ["put", "Object", "--source", "-"],
-	["set", "Object", "CloudItem", '{"Name":"changed"}'],
-	["del", "Object", "CloudItem"], ["delete", "Object", "CloudItem"],
-	["delete-item", "Object", "CloudItem"], ["del-prop", "Object", "CloudItem", "Name"],
-	["delete-property", "Object", "CloudItem", "Name"], ["rename", "Object", "CloudItem", "NewId"],
+	["seed", "Object", "--source", "-"], ["add", "Object", "--source", "-"],
+	["delete-item", "Object", "CloudItem"], ["delete-property", "Object", "CloudItem", "Name"],
+
 	["maintain", "Object", "--apply"], ["maintain", "--wwwa", "--apply"],
 ])
 def test_cr069_explicit_write_destination_is_still_required(clouds, tmp_path, capsys, command):
