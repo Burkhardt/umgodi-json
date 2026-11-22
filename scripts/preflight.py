@@ -43,19 +43,9 @@ def main():
 		return result.stdout.strip()
 
 	try:
-		# The paired pits CLI also reads RAIkeep configuration during parity tests.
-		home = work / "test-home"
-		config = home / ".config" / "RAIkeep.json5"
-		config.parent.mkdir(parents=True)
-		cloud = work / "cloud"
-		cloud.mkdir()
-		config.write_text(json.dumps({
-			"TempDir": str(work / "temp"), "DefaultCloudOrder": ["OneDrive"],
-			"Cloud": {"OneDrive": str(cloud)},
-		}), encoding="utf-8")
-		test_env = {**env, "HOME": str(home), "PYTHONPATH": os.pathsep.join(map(str, (inqaba, ROOT)))}
+		test_env = {**env, "PYTHONPATH": os.pathsep.join(map(str, (inqaba, ROOT)))}
 		for package in (inqaba, ROOT):
-			run([sys.executable, "-m", "pytest", "tests", "-q"], cwd=package, command_env=test_env)
+			run([sys.executable, "-m", "pytest", "tests", "-q", "-rs"], cwd=package, command_env=test_env)
 			run([sys.executable, "-m", "build", "--outdir", dist], cwd=package)
 		run([sys.executable, "-m", "twine", "check", *sorted(dist.iterdir())])
 		for archive in dist.glob("*.tar.gz"):

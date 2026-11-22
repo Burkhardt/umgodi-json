@@ -8,17 +8,19 @@ import shutil
 import os
 from pathlib import Path
 
+import pytest
+
 from tests.sequence_runner import SequenceRunner
 
 SUITES_DIR = Path(__file__).resolve().parent / "suites"
 
 
-def test_declarative_parity_suites() -> None:
+def test_declarative_parity_suites(configured_test_cloud) -> None:
 	"""Runs destructive cloud-backed parity suites only when explicitly requested."""
 	if os.getenv("RAIKEEP_RUN_SEQUENCE_SUITES") != "1":
-		return
+		pytest.skip("Set RAIKEEP_RUN_SEQUENCE_SUITES=1 to run parity suites")
 	if not shutil.which("pits") or not shutil.which("jpit"):
-		return
+		pytest.skip("Parity suites require pits and jpit on PATH")
 
 	runner = SequenceRunner()
 	for suite_file in sorted(SUITES_DIR.glob("*.json5")):

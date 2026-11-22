@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,10 @@ def allocate_suite_root(data):
 		raise ValueError("Local sequence suites require Cloud=test")
 	if data.get("Root") not in (None, "TEMP"):
 		raise ValueError("Local sequence roots must be allocated per run")
+	config_path = Path.home() / ".config" / "RAIkeep.json5"
+	active = InqConfig.find_config_file()
+	if not config_path.is_file() or active is None or Path(active).resolve() != config_path.resolve():
+		raise RuntimeError("Sequence suites require the active ~/.config/RAAIkeep.json5 and TestCloud")
 	config = InqConfig.load()
 	cloud = config.cloud_root(config.test_cloud) if config.test_cloud else None
 	if cloud is None or not cloud.is_dir():
@@ -44,6 +49,8 @@ def suite_variables(data, root):
 	for key in ("RootName", "PitRoot"):
 		if key in variables and not Path(variables[key]).resolve().is_relative_to(Path(root).resolve()):
 			raise ValueError(f"{key} must stay inside the owned TestCloud run directory")
+		if key in variables and shlex.quote(variables[key]) != variables[key]:
+			raise ValueError(f"{key} contains characters unsafe for sequence shell commands")
 	return variables
 
 
