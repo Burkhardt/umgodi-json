@@ -1,4 +1,4 @@
-# umgodi API Reference (v4.6.7)
+# umgodi API Reference (v4.7.0)
 
 The `umgodi-json` distribution provides the public `umgodi` API and uses Inqaba for shared filesystem and configuration operations.
 
