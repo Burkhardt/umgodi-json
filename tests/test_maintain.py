@@ -14,7 +14,6 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
-import time
 
 import pytest
 
@@ -24,6 +23,7 @@ from umgodi.cli import cmd_maintain, main, parse_duration
 from umgodi.flags import MasterFlagFile, ProcessFlagFile, TimestampedValue
 from umgodi.item import PitItem
 from umgodi.store import Pit, PitMaintenanceOptions, PitMaintenanceResult
+from tests.timing import wait_for_returned_ticket
 
 
 def test_parse_duration() -> None:
@@ -342,15 +342,6 @@ def realistic_tenant(pit_test_root):
 	tenant = pit_test_root / "Tenant"
 	tenant.mkdir()
 	return tenant
-
-
-def wait_for_returned_ticket(pit: Pit) -> None:
-	ticket = pit.master_flag.ticket()
-	assert ticket is not None and ticket.state == "Returned" and ticket.written is not None
-	_, pit_sync, _, buffer = pit._load_timing()
-	deadline = ticket.written + pit_sync + buffer
-	while (remaining := (deadline - utcnow()).total_seconds()) > 0:
-		time.sleep(remaining)
 
 
 @pytest.mark.parametrize("age", [datetime.timedelta(minutes=5), datetime.timedelta(days=8)])

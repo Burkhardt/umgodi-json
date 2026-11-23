@@ -1,6 +1,6 @@
 from pathlib import Path
 import pytest
-from tests.sequence_runner import allocate_suite_root, suite_variables
+from tests.sequence_runner import allocate_suite_root, suite_variables, wait_for_suite_ticket
 from umgodi.config import loads_json5
 
 
@@ -27,6 +27,11 @@ def test_variables_cannot_escape_owned_root(configured_test_cloud, tmp_path, var
 def test_shell_unsafe_paths_are_rejected(configured_test_cloud, tmp_path):
 	with pytest.raises(ValueError, match="unsafe"):
 		suite_variables({"Variables": {"PitRoot": "{root}/with space"}}, str(tmp_path))
+
+
+def test_ticket_wait_cannot_escape_owned_root(pit_test_root, tmp_path):
+	with pytest.raises(ValueError, match="inside"):
+		wait_for_suite_ticket(pit_test_root, tmp_path)
 
 
 def test_all_shipped_suites_resolve_inside_owned_root(configured_test_cloud, tmp_path):

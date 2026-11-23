@@ -29,6 +29,7 @@
 			Steps: [
 				{
 					Command: "echo '{Id: \"Item1\", Val: 200}' | jpit add Coordination --source - -r {PitRoot} --retain-window",
+					WaitForTicket: "{PitRoot}/Coordination",
 					ExpectCode: 0
 				},
 				{

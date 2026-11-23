@@ -20,7 +20,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from inqaba import InqPath
+from tests.timing import wait_for_returned_ticket
 from umgodi.config import loads_json5, InqConfig
+from umgodi.store import Pit
 
 
 def configured_provider():
@@ -65,6 +68,14 @@ def suite_variables(data, root):
 		if key in variables and shlex.quote(variables[key]) != variables[key]:
 			raise ValueError(f"{key} contains characters unsafe for sequence shell commands")
 	return variables
+
+
+def wait_for_suite_ticket(root, directory):
+	directory = Path(directory).resolve()
+	if not directory.is_relative_to(Path(root).resolve()):
+		raise ValueError("Ticket wait must stay inside the owned TestCloud run directory")
+	with Pit.open(InqPath.from_directory(directory), read_only=True, unflagged=True, autoload=False) as pit:
+		wait_for_returned_ticket(pit)
 
 
 @dataclass
@@ -275,6 +286,11 @@ class SequenceRunner:
 
 				for step_data in steps_def or []:
 					cmd = step_data.get("Command", "")
+					if "WaitForTicket" in step_data:
+						directory = step_data["WaitForTicket"]
+						for k, v in variables.items():
+							directory = directory.replace(f"{{{k}}}", v)
+						wait_for_suite_ticket(temp_dir.name, directory)
 					res = self.execute_step(
 						cmd_str=cmd,
 						variables=variables,

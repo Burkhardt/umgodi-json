@@ -21,6 +21,8 @@ persistence initialization and both `jpit` and `umgodi` entry points.
 The persistence smoke uses a run-owned directory in the configured Dropbox
 root; it reports a skip if the real configuration or drive is unavailable.
 The optional declarative sequence suites require explicit opt-in.
+They wait for the configured returned-ticket synchronization window, so they
+can take considerably longer with real cloud timings.
 The GitHub-hosted release runner installs the native Amafu 4.7.0 binary, but
 Amafu does not install or synchronize Dropbox. Cloud tests still skip unless
 the runner has the real RAIkeep configuration with `TestCloud` set to Dropbox

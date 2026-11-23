@@ -37,11 +37,8 @@
 			Name: "3. C# pits maintain Ingests & Issues 7-Digit UTC Receipt",
 			Steps: [
 				{
-					Command: "python3 -c \"from pathlib import Path; (Path('{PitRoot}/Ledger/Master.flag')).unlink(missing_ok=True)\"",
-					ExpectCode: 0
-				},
-				{
 					Command: "pits maintain Ledger --apply -r {PitRoot} -n",
+					WaitForTicket: "{PitRoot}/Ledger",
 					ExpectCode: 0
 				},
 				{
@@ -55,6 +52,7 @@
 			Steps: [
 				{
 					Command: "pits maintain Ledger --apply -r {PitRoot} -n",
+					WaitForTicket: "{PitRoot}/Ledger",
 					ExpectCode: 0
 				},
 				{
@@ -72,6 +70,7 @@
 				},
 				{
 					Command: "pits maintain Ledger --apply -r {PitRoot} -n",
+					WaitForTicket: "{PitRoot}/Ledger",
 					ExpectCode: 0
 				},
 				{

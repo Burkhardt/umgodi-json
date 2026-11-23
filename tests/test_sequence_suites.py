@@ -25,4 +25,5 @@ def test_declarative_parity_suites(configured_test_cloud) -> None:
 	runner = SequenceRunner()
 	for suite_file in sorted(SUITES_DIR.glob("*.json5")):
 		res = runner.run_suite(suite_file)
-		assert res.failed == 0, f"Suite '{res.name}' had {res.failed} failure(s)."
+		failures = "\n".join(case.error_message for case in res.case_results if not case.passed)
+		assert res.failed == 0, f"Suite '{res.name}' had {res.failed} failure(s):\n{failures}"

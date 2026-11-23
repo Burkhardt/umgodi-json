@@ -41,6 +41,7 @@
 			Steps: [
 				{
 					Command: "echo '{Id: \"AAPL\", Price: 265.50, Volume: 1200000}' | jpit add Portfolio --source - -r {PitRoot}",
+					WaitForTicket: "{PitRoot}/Portfolio",
 					ExpectCode: 0,
 					ExpectStdoutContains: "1 written, 0 unchanged"
 				},
@@ -68,6 +69,7 @@
 				},
 				{
 					Command: "pits seed Portfolio --source {PitRoot}/seed_msft.json -r {PitRoot} -n",
+					WaitForTicket: "{PitRoot}/Portfolio",
 					ExpectCode: 0
 				},
 				{
@@ -88,6 +90,7 @@
 			Steps: [
 				{
 					Command: "python3 -c \"from inqaba import InqPath; from umgodi import Pit; p = Pit.open(InqPath('{PitRoot}/Portfolio')); assert p.rename_id('AAPL','APPLE'); p.save(); p.close()\"",
+					WaitForTicket: "{PitRoot}/Portfolio",
 					ExpectCode: 0
 				},
 				{
