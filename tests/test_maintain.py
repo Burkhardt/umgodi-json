@@ -14,6 +14,7 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import time
 
 import pytest
 
@@ -343,6 +344,15 @@ def realistic_tenant(pit_test_root):
 	return tenant
 
 
+def wait_for_returned_ticket(pit: Pit) -> None:
+	ticket = pit.master_flag.ticket()
+	assert ticket is not None and ticket.state == "Returned" and ticket.written is not None
+	_, pit_sync, _, buffer = pit._load_timing()
+	deadline = ticket.written + pit_sync + buffer
+	while (remaining := (deadline - utcnow()).total_seconds()) > 0:
+		time.sleep(remaining)
+
+
 @pytest.mark.parametrize("age", [datetime.timedelta(minutes=5), datetime.timedelta(days=8)])
 def test_historical_save_publishes_current_lease_without_changing_history(realistic_tenant, age):
 	directory = realistic_tenant / "HistoricalSave"
@@ -408,6 +418,7 @@ def test_historical_store_renews_lease_and_retires_accounted_changes(realistic_t
 		receipt = change.with_suffix(".receipt")
 		receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
 		pending = publish("Second")
+		wait_for_returned_ticket(pit)
 		result = pit.maintain(apply=True)
 		assert result.canonical_persisted and result.deferred == []
 		assert result.change_files_removed == result.receipts_removed == 1
@@ -439,6 +450,7 @@ def test_maintenance_rechecks_owner_and_canonical_evidence_before_cleanup(realis
 				return written
 
 			monkeypatch.setattr(pit, "_store_canonical", store_then_intervene)
+			wait_for_returned_ticket(pit)
 			result = pit.maintain(apply=True)
 			assert result.change_files_removed == result.receipts_removed == 0
 			assert change.is_file() and receipt.is_file()

@@ -25,14 +25,16 @@ def _amafu_cloud_root(provider):
 	configured = OsConfig.load().get_cloud_root(provider)
 	if configured is None:
 		pytest.skip(f"Cloud.{provider} is not configured")
-	if Path(str(configured)).resolve() != root:
+	configured_root = Path(str(configured))
+	if configured_root.resolve() != root:
 		pytest.fail(f"amafu {provider} root differs from the real configuration")
 	if not root.is_dir():
 		pytest.skip(f"Cloud tests require the configured {provider} cloud drive to be installed and available")
-	return root
+	return configured_root
 
 
 def _ensure_dropbox_timing(root):
+	root = root.resolve()
 	parent = root / "JsonPit"
 	if not parent.resolve().is_relative_to(root):
 		pytest.fail("Dropbox timing directory resolves outside Dropbox")
@@ -43,7 +45,7 @@ def _ensure_dropbox_timing(root):
 		return
 	if destination.exists() or destination.is_symlink():
 		pytest.fail(f"Dropbox timing path is not a regular file: {destination}")
-	onedrive = _amafu_cloud_root("OneDrive")
+	onedrive = _amafu_cloud_root("OneDrive").resolve()
 	source = onedrive / "JsonPit" / "timing.json5"
 	if not source.is_file() or not source.resolve().is_relative_to(onedrive):
 		pytest.skip("Dropbox timing.json5 is missing and the original OneDrive timing.json5 is unavailable")

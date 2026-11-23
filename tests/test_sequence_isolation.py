@@ -8,7 +8,7 @@ def test_runs_allocate_distinct_cloud_roots(configured_test_cloud):
 	_, root = configured_test_cloud
 	with allocate_suite_root({}) as first, allocate_suite_root({}) as second:
 		assert first != second
-		assert Path(first).parent == root
+		assert Path(first).parent.resolve() == root.resolve()
 		assert Path(first).name.startswith("RAIkeep.Test.")
 	assert not Path(first).exists()
 	assert root.exists()
