@@ -42,30 +42,30 @@ def test_removed_verbs_are_rejected(verb):
 	assert error.value.code == 2
 
 
-def test_cli_grep_living_state(capsys: Any = None) -> None:
+def test_cli_grep_living_state(csharp_person_pit: Path, capsys: Any = None) -> None:
 	f_out = io.StringIO()
 	f_err = io.StringIO()
 	with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-		code = main(["grep", "Smalltalk", str(FIXTURE_PATH)])
+		code = main(["grep", "Smalltalk", str(csharp_person_pit)])
 	assert code == 0
 	out = f_out.getvalue()
 	assert "Adele" in out
 	assert "Alan" in out
 
 
-def test_cli_grep_json_output(capsys: Any = None) -> None:
+def test_cli_grep_json_output(csharp_person_pit: Path, capsys: Any = None) -> None:
 	f_out = io.StringIO()
 	f_err = io.StringIO()
 	with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-		code = main(["grep", "Goldberg", str(FIXTURE_PATH), "--json"])
+		code = main(["grep", "Goldberg", str(csharp_person_pit), "--json"])
 	assert code == 0
 	results = json.loads(f_out.getvalue())
 	assert len(results) >= 1
 	assert any(r["Id"] == "7010" and r["Name"] == "Adele" for r in results)
 
 
-def test_seed_add_share_sparse_history_and_delete(tmp_path, capsys):
-	pit = str(tmp_path / "TestPit.pit")
+def test_seed_add_share_sparse_history_and_delete(pit_test_root, tmp_path, capsys):
+	pit = str(pit_test_root / "TestPit.pit")
 	source = tmp_path / "source.json"
 	for verb, payload in [("seed", {"Name": "Alice", "Role": "Architect"}), ("add", {"Role": "Editor"})]:
 		source.write_text(json.dumps({"Id": "User1", **payload}))
@@ -91,24 +91,24 @@ def test_cli_version_flag(capsys: Any = None) -> None:
 	assert out in (f"jpit v{__version__}", f"umgodi v{__version__}")
 
 
-def test_cli_flexible_option_placement(capsys: Any = None) -> None:
+def test_cli_flexible_option_placement(csharp_person_pit: Path, capsys: Any = None) -> None:
 	# Leading option: jpit -r AIA grep Adele <pit>
 	f_out1 = io.StringIO()
 	with contextlib.redirect_stdout(f_out1):
-		code1 = main(["-r", "AIA", "grep", "Adele", str(FIXTURE_PATH)])
+		code1 = main(["-r", "AIA", "grep", "Adele", str(csharp_person_pit)])
 	assert code1 == 0
 	assert "Adele" in f_out1.getvalue()
 
 	# Trailing option: jpit grep Adele <pit> --root AIA
 	f_out2 = io.StringIO()
 	with contextlib.redirect_stdout(f_out2):
-		code2 = main(["grep", "Adele", str(FIXTURE_PATH), "--root", "AIA"])
+		code2 = main(["grep", "Adele", str(csharp_person_pit), "--root", "AIA"])
 	assert code2 == 0
 	assert "Adele" in f_out2.getvalue()
 
 
-def test_read_operation_never_creates_directories(capsys: Any = None) -> None:
-	with tempfile.TemporaryDirectory() as tmp_dir:
+def test_read_operation_never_creates_directories(pit_test_root, capsys: Any = None) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp_dir:
 		non_existent_pit = Path(tmp_dir) / "GhostPit"
 		assert not non_existent_pit.exists()
 
@@ -124,8 +124,8 @@ def test_read_operation_never_creates_directories(capsys: Any = None) -> None:
 		assert not non_existent_pit.exists(), "Grep must never create ghost directory!"
 
 
-def test_disallow_manual_modified_or_deleted(capsys: Any = None) -> None:
-	with tempfile.TemporaryDirectory() as tmp_dir:
+def test_disallow_manual_modified_or_deleted(pit_test_root, capsys: Any = None) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp_dir:
 		pit_dir = Path(tmp_dir) / "TestPit"
 
 		for attribute, value in [("Deleted", True), ("Modified", "2026-01-01T00:00:00Z")]:
@@ -141,8 +141,8 @@ def test_disallow_manual_modified_or_deleted(capsys: Any = None) -> None:
 		assert "Cannot tombstone protected attribute 'Deleted'" in f_err3.getvalue()
 
 
-def test_cli_list_discovery_and_ls_alias() -> None:
-	with tempfile.TemporaryDirectory() as tmp_dir:
+def test_cli_list_discovery_and_ls_alias(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp_dir:
 		root = Path(tmp_dir)
 		# Create four mock pits to test positional color sequence
 		(root / "PitAlpha").mkdir()
@@ -222,10 +222,10 @@ def test_cli_list_discovery_and_ls_alias() -> None:
 		assert "#3---retain-window-compatibility-exception" in rw_out
 
 
-def test_general_help_shows_wwwa_pit_status_only_when_explicit_or_contextual() -> None:
+def test_general_help_shows_wwwa_pit_status_only_when_explicit_or_contextual(pit_test_root) -> None:
 	from umgodi.icons import Icons
 
-	with tempfile.TemporaryDirectory() as tmp_dir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp_dir:
 		root = Path(tmp_dir)
 		weather = root / "Weather"
 		weather.mkdir()
@@ -266,16 +266,16 @@ def test_discovery_output_uses_trailing_directory_separator() -> None:
 	assert output == "[ParityCloud] (/tmp/diagram-fixture/): 1 pit(s) found\n  Activity"
 
 
-def test_pits_and_umgodi_query_the_same_fragments(tmp_path, capsys):
+def test_pits_and_umgodi_query_the_same_fragments(pit_test_root, csharp_person_pit, capsys):
 	import shutil
 	import subprocess
 
 	assembly = Path(__file__).resolve().parents[2] / "PitSeeder/pits/bin/Debug/net10.0/pits.dll"
 	if not assembly.is_file() or not shutil.which("dotnet"):
 		pytest.skip("Requires the local pits candidate and the .NET runtime")
-	path = tmp_path / "Person" / "Person.pit"
+	path = pit_test_root / "Person" / "Person.pit"
 	path.parent.mkdir()
-	shutil.copyfile(FIXTURE_PATH, path)
+	shutil.copyfile(csharp_person_pit, path)
 	before = path.read_bytes()
 	for args in (["grep", "^adele$", str(path), "-i", "-e", "-p", "Name", "--json"],
 			["history", str(path), "7010"]):

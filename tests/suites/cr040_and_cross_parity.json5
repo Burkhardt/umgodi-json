@@ -6,9 +6,6 @@
 		RootName: "{root}/AIA.ParitySuite",
 		PitRoot: "{root}/AIA.ParitySuite"
 	},
-	Construct: [
-		"rm -rf {PitRoot}"
-	],
 	Tests: [
 		{
 			Name: "1. Python jpit creates sparse entity -> C# pits reads & exports",
@@ -84,7 +81,4 @@
 			]
 		}
 	],
-	Destruct: [
-		"rm -rf {PitRoot}"
-	]
 }

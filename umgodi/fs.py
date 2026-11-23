@@ -29,11 +29,11 @@ def resolve_pit_target(
 	Resolves a pit target to its directory InqEntry and canonical Pit name.
 
 	Supported forms:
-	1. Cloud triad: Pit.open("Person", cloud="OneDrive", root="AfricaStage")
+	1. Cloud triad: "Person", cloud="OneDrive", root="AfricaStage"
 	   -> (<OneDriveData>/AfricaStage/Person/, "Person")
-	2. Explicit directory: Pit.open("/path/to/AfricaStage/Person")
+	2. Explicit directory: "/path/to/AfricaStage/Person"
 	   -> (/path/to/AfricaStage/Person/, "Person")
-	3. Explicit file: Pit.open("/path/to/AfricaStage/Person/Person.pit")
+	3. Explicit CLI file: "/path/to/AfricaStage/Person/Person.pit"
 	   -> (/path/to/AfricaStage/Person/, "Person")
 	"""
 	raw_str = str(name_or_path).strip()

@@ -8,9 +8,6 @@
 		RootName: "{root}/AIA.ParitySuite.05_Flags",
 		PitRoot: "{root}/AIA.ParitySuite.05_Flags"
 	},
-	Construct: [
-		"rm -rf {PitRoot}"
-	],
 	Tests: [
 		{
 			Name: "1. Clean Process Flag Cleanup on Exit (Rule 5)",
@@ -120,7 +117,4 @@
 			]
 		}
 	],
-	Destruct: [
-		"rm -rf {PitRoot}"
-	]
 }

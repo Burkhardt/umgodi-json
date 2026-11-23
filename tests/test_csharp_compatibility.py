@@ -5,6 +5,8 @@ queries, and projects actual C# JsonPit snapshots.
 
 from __future__ import annotations
 
+from inqaba import InqPath
+
 from pathlib import Path
 
 from umgodi.store import Pit
@@ -12,11 +14,11 @@ from umgodi.store import Pit
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
 
-def test_load_csharp_person_pit() -> None:
-	pit_file = FIXTURE_DIR / "Person.pit"
+def test_load_csharp_person_pit(csharp_person_pit: Path) -> None:
+	pit_file = csharp_person_pit
 	assert pit_file.is_file(), f"Missing test fixture: {pit_file}"
 
-	pit = Pit(FIXTURE_DIR, "Person", read_only=True, unflagged=True)
+	pit = Pit(InqPath.from_directory(pit_file.parent), "Person", read_only=True, unflagged=True)
 	loaded = pit.load()
 	assert loaded is True
 	assert len(pit) == 7

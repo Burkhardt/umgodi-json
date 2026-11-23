@@ -48,8 +48,8 @@ def test_change_file_name_round_trip() -> None:
 	assert ChangeFile.identity_of(legacy_name) == identity
 
 
-def test_change_file_creation_and_validation() -> None:
-	with tempfile.TemporaryDirectory() as td:
+def test_change_file_creation_and_validation(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as td:
 		pit_dir = Path(td)
 		item = PitItem(id="Artist_Hugh")
 		item.set_property({"Genre": "Jazz", "Instrument": "Flugelhorn"})
@@ -75,8 +75,8 @@ def test_change_file_creation_and_validation() -> None:
 		assert ChangeFile.read_validated(change_path) is None
 
 
-def test_receipt_file_grace_period() -> None:
-	with tempfile.TemporaryDirectory() as td:
+def test_receipt_file_grace_period(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as td:
 		pit_dir = Path(td)
 		fake_change = pit_dir / "12345_Host-app-1_015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862.json"
 		fake_change.write_text("[]", encoding="utf-8")

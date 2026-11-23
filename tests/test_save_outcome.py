@@ -1,3 +1,4 @@
+from inqaba import InqPath
 import asyncio
 
 import pytest
@@ -5,8 +6,8 @@ import pytest
 from umgodi import Pit, PitSaveOutcome, PitSaveResult
 
 
-def test_canonical_write_and_clean_save(tmp_path):
-	with Pit.open(tmp_path / "Person", unflagged=True) as pit:
+def test_canonical_write_and_clean_save(pit_test_root):
+	with Pit.open(InqPath.from_directory(pit_test_root / "Person"), unflagged=True) as pit:
 		pit.add({"Id": "X1"})
 		assert asyncio.run(pit.save_async()) == PitSaveResult(PitSaveOutcome.WROTE)
 		assert not pit.invalid()
@@ -18,13 +19,13 @@ def test_canonical_write_and_clean_save(tmp_path):
 		assert pit.canonical_file.stat().st_mtime_ns == stamp
 
 
-def test_foreign_lease_reports_only_published_fragments(tmp_path):
-	directory = tmp_path / "Person"
+def test_foreign_lease_reports_only_published_fragments(pit_test_root):
+	directory = pit_test_root / "Person"
 	directory.mkdir()
 	canonical = directory / "Person.pit"
 	canonical.write_text("[]")
 	stamp = canonical.stat().st_mtime_ns
-	with Pit.open(directory) as pit:
+	with Pit.open(InqPath.from_directory(directory)) as pit:
 		pit.master_flag.update(originator="Remote-app-123")
 		assert pit.save(force=True) == PitSaveResult(PitSaveOutcome.NOTHING_TO_WRITE)
 		assert not list(directory.glob("*.json"))
@@ -37,15 +38,15 @@ def test_foreign_lease_reports_only_published_fragments(tmp_path):
 		assert canonical.stat().st_mtime_ns == stamp
 
 
-def test_explicit_load_and_read_only(tmp_path):
-	directory = tmp_path / "Person"
+def test_explicit_load_and_read_only(pit_test_root):
+	directory = pit_test_root / "Person"
 	directory.mkdir()
 	(directory / "Person.pit").write_text("[]")
-	with Pit.open(directory, autoload=False) as pit:
+	with Pit.open(InqPath.from_directory(directory), autoload=False) as pit:
 		assert pit.save() == PitSaveResult(PitSaveOutcome.PIT_NOT_LOADED)
 		assert pit.load()
 		assert pit.save() == PitSaveResult(PitSaveOutcome.NOTHING_TO_WRITE)
-	with Pit.open(directory, read_only=True) as pit:
+	with Pit.open(InqPath.from_directory(directory), read_only=True) as pit:
 		with pytest.raises(OSError, match="read-only"):
 			pit.save()
 		with pytest.raises(OSError, match="read-only"):

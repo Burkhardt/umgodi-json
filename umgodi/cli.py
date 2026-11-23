@@ -56,7 +56,7 @@ def discover_pits(
 	target: str,
 	cloud: str | None = None,
 	root: str | None = None,
-) -> list[tuple[InqEntry, str]]:
+) -> list[tuple[InqPath, str]]:
 	"""
 	Discovers one or multiple pits based on a target name or root.
 	If target is an entire root (e.g. 'AIA'), discovers all contained pits.
@@ -73,10 +73,15 @@ def discover_pits(
 	pits = []
 	for child in sorted(directory.iterdir()):
 		if child.is_file() and child.suffix.lower() == ".pit":
-			pits.append((child.parent, child.stem))
+			pits.append((InqPath.from_directory(child.parent), child.stem))
 		elif child.is_dir() and (child / f"{child.name}.pit").is_file():
-			pits.append((child, child.name))
+			pits.append((InqPath.from_directory(child), child.name))
 	return pits
+
+
+def _open_cli_pit(target: str, cloud: str | None, root: str | None, **options: Any) -> Pit:
+	pit_dir, pit_name = resolve_pit_target(target, cloud=cloud, root=root)
+	return Pit(pit_dir, pit_name, **options)
 
 
 def extract_cloud_and_root(argv: list[str]) -> tuple[str | None, str | None]:
@@ -194,7 +199,7 @@ def _get_nested(data: dict[str, Any], path: str) -> Any:
 
 def cmd_history(args: argparse.Namespace) -> int:
 	"""Dumps the raw immutable fragment history array for an entity."""
-	with Pit.open(
+	with _open_cli_pit(
 		args.pit,
 		cloud=args.cloud,
 		root=args.root,
@@ -400,7 +405,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
 	# CR047: Strict patch mode pre-validation before opening target Pit for writing or creating flags
 	if require_existing:
 		try:
-			with Pit.open(
+			with _open_cli_pit(
 				args.pit,
 				cloud=args.cloud,
 				root=args.root,
@@ -425,7 +430,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
 			sys.stderr.write(f"[jpit] Error: {ex}\n")
 			return 1
 
-	with Pit.open(
+	with _open_cli_pit(
 		args.pit,
 		cloud=args.cloud,
 		root=args.root,
@@ -450,7 +455,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
 
 def cmd_delete(args: argparse.Namespace) -> int:
 	"""Tombstones an entity with audited author note and 100s backdating."""
-	with Pit.open(
+	with _open_cli_pit(
 		args.pit,
 		cloud=args.cloud,
 		root=args.root,
@@ -475,7 +480,7 @@ def cmd_delete_prop(args: argparse.Namespace) -> int:
 		)
 		return 1
 
-	with Pit.open(
+	with _open_cli_pit(
 		args.pit,
 		cloud=args.cloud,
 		root=args.root,
@@ -516,7 +521,7 @@ def cmd_export(args: argparse.Namespace) -> int:
 		canonical = pit_dir / f"{pit_name}.pit"
 		if not canonical.is_file():
 			raise PitNotFoundError(f"Export source pit does not exist: {canonical}")
-		with Pit.open(canonical, read_only=True, unflagged=True) as pit:
+		with Pit(pit_dir, pit_name, read_only=True, unflagged=True) as pit:
 			items = []
 			for key in pit.keys():
 				item = pit.get(key, at=at_time)
@@ -787,10 +792,9 @@ def cmd_maintain(args: argparse.Namespace) -> int:
 			results.append(missing)
 			continue
 
-		with Pit.open(
-			p_dir,
-			cloud=cloud,
-			root=root,
+		with Pit(
+			InqPath.from_directory(p_dir),
+			p_name,
 			read_only=(not apply),
 			unflagged=(not apply),
 			subscriber="jpit",

@@ -43,19 +43,9 @@ def main():
 		return result.stdout.strip()
 
 	try:
-		# The paired pits CLI also reads RAIkeep configuration during parity tests.
-		home = work / "test-home"
-		config = home / ".config" / "RAIkeep.json5"
-		config.parent.mkdir(parents=True)
-		cloud = work / "cloud"
-		cloud.mkdir()
-		config.write_text(json.dumps({
-			"TempDir": str(work / "temp"), "DefaultCloudOrder": ["OneDrive"],
-			"Cloud": {"OneDrive": str(cloud)},
-		}), encoding="utf-8")
-		test_env = {**env, "HOME": str(home), "PYTHONPATH": os.pathsep.join(map(str, (inqaba, ROOT)))}
+		test_env = {**env, "PYTHONPATH": os.pathsep.join(map(str, (inqaba, ROOT, ROOT.parent / "vikela")))}
 		for package in (inqaba, ROOT):
-			run([sys.executable, "-m", "pytest", "tests", "-q"], cwd=package, command_env=test_env)
+			run([sys.executable, "-m", "pytest", "tests", "-q", "-rs"], cwd=package, command_env=test_env)
 			run([sys.executable, "-m", "build", "--outdir", dist], cwd=package)
 		run([sys.executable, "-m", "twine", "check", *sorted(dist.iterdir())])
 		for archive in dist.glob("*.tar.gz"):
@@ -75,9 +65,10 @@ def main():
 		run([python, "-m", "pip", "install", "--no-index", "--find-links", dist, "umgodi-json"])
 		run([python, "-m", "pip", "check"])
 		run([python, "-I", "-c", """import importlib.metadata as m
-import pathlib, tempfile, sys
+import pathlib, subprocess, tempfile, sys
 import inqaba, umgodi
 from inqaba import InqConfig, InqPath, InqRelPath, InqFile
+from umgodi.config import loads_json5
 assert pathlib.Path(inqaba.__file__).is_relative_to(sys.prefix)
 assert pathlib.Path(umgodi.__file__).is_relative_to(sys.prefix)
 assert m.version('inqaba') == inqaba.__version__
@@ -86,10 +77,37 @@ for name in ('inqaba', 'umgodi-json'):
     for requirement in m.requires(name) or []:
         if 'extra ==' not in requirement:
             assert not any(tool in requirement.lower() for tool in ('pytest', 'twine', 'ruff', 'mypy', 'build'))
-with tempfile.TemporaryDirectory() as tmp:
-    with umgodi.Pit(InqPath(tmp), 'Smoke', read_only=False, unflagged=True) as pit:
-        assert isinstance(pit.pit_dir, InqPath)
-print('Installed-wheel imports, metadata and persistence smoke passed')
+config = pathlib.Path.home() / '.config' / 'RAIkeep.json5'
+active = InqConfig.find_config_file()
+if not config.is_file() or active is None or pathlib.Path(active).resolve() != config.resolve():
+    print('SKIPPED persistence smoke: real RAIkeep configuration is unavailable')
+elif loads_json5(config.read_text(encoding='utf-8')).get('TestCloud') != 'Dropbox':
+    print('SKIPPED persistence smoke: TestCloud is not Dropbox')
+else:
+    try:
+        result = subprocess.run(['amafu', 'list', 'cloud', 'Dropbox'], capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError) as error:
+        print(f'SKIPPED persistence smoke: Dropbox is unavailable: {error}')
+    else:
+        lines = result.stdout.splitlines()
+        if len(lines) != 1 or not pathlib.Path(lines[0]).is_absolute():
+            raise RuntimeError('amafu did not return one absolute Dropbox root')
+        root = pathlib.Path(lines[0]).resolve()
+        configured = InqConfig.load().get_cloud_root('Dropbox')
+        if configured is None or pathlib.Path(str(configured)).resolve() != root:
+            raise RuntimeError('amafu Dropbox root differs from the real configuration')
+        if not root.is_dir():
+            print('SKIPPED persistence smoke: Dropbox is unavailable')
+        else:
+            parent = root / 'RAIkeepTests' / 'umgodi-json'
+            if not parent.resolve().is_relative_to(root):
+                raise RuntimeError('Test directory resolves outside Dropbox')
+            parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(dir=parent, prefix='preflight-') as tmp:
+                with umgodi.Pit(InqPath(tmp), 'Smoke', read_only=False, unflagged=True) as pit:
+                    assert isinstance(pit.pit_dir, InqPath)
+            print('Installed-wheel persistence smoke passed on Dropbox')
+print('Installed-wheel imports and metadata checks passed')
 """])
 		with (ROOT / "pyproject.toml").open("rb") as stream:
 			version = tomllib.load(stream)["project"]["version"]

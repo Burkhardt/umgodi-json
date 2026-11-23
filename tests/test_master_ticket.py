@@ -20,8 +20,8 @@ from umgodi.flags import (
 from umgodi.item import TimestampedValue
 
 
-def test_master_flag_claim_without_renewal() -> None:
-	with tempfile.TemporaryDirectory() as td:
+def test_master_flag_claim_without_renewal(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as td:
 		pit_dir = Path(td)
 		master = MasterFlagFile(pit_dir)
 		assert master.is_expired is True
@@ -43,8 +43,8 @@ def test_master_flag_claim_without_renewal() -> None:
 		assert master.originator == "MachineA-App-100"
 
 
-def test_master_flag_expires_after_duration() -> None:
-	with tempfile.TemporaryDirectory() as td:
+def test_master_flag_expires_after_duration(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as td:
 		pit_dir = Path(td)
 		master = MasterFlagFile(pit_dir)
 
@@ -60,8 +60,8 @@ def test_master_flag_expires_after_duration() -> None:
 		assert master.is_expired is False
 
 
-def test_process_flag_file_lifecycle() -> None:
-	with tempfile.TemporaryDirectory() as td:
+def test_process_flag_file_lifecycle(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as td:
 		pit_dir = Path(td)
 		proc_flag = ProcessFlagFile(pit_dir, subscriber="TestRunner")
 		assert not proc_flag.path.is_file()

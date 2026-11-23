@@ -16,9 +16,9 @@ from umgodi import Pit, PitItem, parse_and_validate_seed_payload
 from umgodi.cli import main as cli_main
 
 
-def test_seed_accepts_single_root_entity_with_id() -> None:
+def test_seed_accepts_single_root_entity_with_id(pit_test_root) -> None:
 	"""CR043 Scenario 1: A root object with non-empty string 'Id' seeds as a single entity."""
-	temp_dir = Path(tempfile.mkdtemp(prefix="umgodi_cr043_single_"))
+	temp_dir = Path(tempfile.mkdtemp(dir=pit_test_root, prefix="umgodi_cr043_single_"))
 	try:
 		source_file = temp_dir / "PerformLive.json5"
 		source_file.write_text(
@@ -55,9 +55,9 @@ def test_seed_accepts_single_root_entity_with_id() -> None:
 		shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_seed_accepts_keyed_entity_map() -> None:
+def test_seed_accepts_keyed_entity_map(pit_test_root) -> None:
 	"""CR043 Scenario 2: Keyed entity map { "Id1": { ... }, "Id2": { ... } } seeds all items."""
-	temp_dir = Path(tempfile.mkdtemp(prefix="umgodi_cr043_map_"))
+	temp_dir = Path(tempfile.mkdtemp(dir=pit_test_root, prefix="umgodi_cr043_map_"))
 	try:
 		source_file = temp_dir / "keyed_map.json5"
 		source_file.write_text(
@@ -81,9 +81,9 @@ def test_seed_accepts_keyed_entity_map() -> None:
 		shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_seed_accepts_standard_array() -> None:
+def test_seed_accepts_standard_array(pit_test_root) -> None:
 	"""CR043 Scenario 3: Standard root JSON array of entity objects."""
-	temp_dir = Path(tempfile.mkdtemp(prefix="umgodi_cr043_array_"))
+	temp_dir = Path(tempfile.mkdtemp(dir=pit_test_root, prefix="umgodi_cr043_array_"))
 	try:
 		source_file = temp_dir / "array.json"
 		source_file.write_text(
@@ -105,7 +105,7 @@ def test_seed_accepts_standard_array() -> None:
 		shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_seed_rejects_invalid_single_root_with_three_way_diagnostic() -> None:
+def test_seed_rejects_invalid_single_root_with_three_way_diagnostic(pit_test_root) -> None:
 	"""CR043 Scenario 4: Invalid root objects that fail all 3 shapes emit the 3-way diagnostic."""
 	invalid_payloads = [
 		'{ "Title": "InvalidNoId", "Count": 42 }',
@@ -117,7 +117,7 @@ def test_seed_rejects_invalid_single_root_with_three_way_diagnostic() -> None:
 	]
 
 	for payload in invalid_payloads:
-		temp_dir = Path(tempfile.mkdtemp(prefix="umgodi_cr043_inv_"))
+		temp_dir = Path(tempfile.mkdtemp(dir=pit_test_root, prefix="umgodi_cr043_inv_"))
 		try:
 			source_file = temp_dir / "invalid.json5"
 			source_file.write_text(payload, encoding="utf-8")
@@ -139,7 +139,7 @@ def test_seed_rejects_invalid_single_root_with_three_way_diagnostic() -> None:
 			shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_seed_rejects_entity_without_id_before_opening_pit() -> None:
+def test_seed_rejects_entity_without_id_before_opening_pit(pit_test_root) -> None:
 	"""CR043 Scenario 5a: An entity without a non-empty string 'Id' inside array or map."""
 	invalid_payloads = [
 		'[{ "Name": "Missing Id" }]',
@@ -147,7 +147,7 @@ def test_seed_rejects_entity_without_id_before_opening_pit() -> None:
 	]
 
 	for payload in invalid_payloads:
-		temp_dir = Path(tempfile.mkdtemp(prefix="umgodi_cr043_noid_"))
+		temp_dir = Path(tempfile.mkdtemp(dir=pit_test_root, prefix="umgodi_cr043_noid_"))
 		try:
 			source_file = temp_dir / "missing_id.json5"
 			source_file.write_text(payload, encoding="utf-8")
@@ -167,9 +167,9 @@ def test_seed_rejects_entity_without_id_before_opening_pit() -> None:
 			shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_seed_rejects_non_object_array_entry_before_opening_pit() -> None:
+def test_seed_rejects_non_object_array_entry_before_opening_pit(pit_test_root) -> None:
 	"""CR043 Scenario 5b: Array contains a primitive or non-object entry."""
-	temp_dir = Path(tempfile.mkdtemp(prefix="umgodi_cr043_nonobj_"))
+	temp_dir = Path(tempfile.mkdtemp(dir=pit_test_root, prefix="umgodi_cr043_nonobj_"))
 	try:
 		source_file = temp_dir / "non_object.json"
 		source_file.write_text('[{ "Id": "Valid" }, "InvalidString"]', encoding="utf-8")

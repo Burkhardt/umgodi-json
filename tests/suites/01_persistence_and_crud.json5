@@ -8,9 +8,6 @@
 		RootName: "{root}/AIA.ParitySuite.01_Crud",
 		PitRoot: "{root}/AIA.ParitySuite.01_Crud"
 	},
-	Construct: [
-		"rm -rf {PitRoot}"
-	],
 	Tests: [
 		{
 			Name: "1. Create Pit & Verify Directory Convention",
@@ -90,7 +87,7 @@
 			Name: "5. Key Renaming (RenameId Invariant)",
 			Steps: [
 				{
-					Command: "python3 -c \"from umgodi import Pit; p = Pit.open('{PitRoot}/Portfolio'); assert p.rename_id('AAPL','APPLE'); p.save(); p.close()\"",
+					Command: "python3 -c \"from inqaba import InqPath; from umgodi import Pit; p = Pit.open(InqPath('{PitRoot}/Portfolio')); assert p.rename_id('AAPL','APPLE'); p.save(); p.close()\"",
 					ExpectCode: 0
 				},
 				{
@@ -145,7 +142,4 @@
 			]
 		}
 	],
-	Destruct: [
-		"rm -rf {PitRoot}"
-	]
 }

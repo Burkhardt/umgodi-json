@@ -1,4 +1,4 @@
-# umgodi API Reference (v4.7.0)
+# umgodi API Reference (v4.7.1)
 
 The `umgodi-json` distribution provides the public `umgodi` API and uses Inqaba for shared filesystem and configuration operations.
 
@@ -26,6 +26,8 @@ The `umgodi-json` distribution provides the public `umgodi` API and uses Inqaba 
   Coordinates one live public instance per canonical pit path, implements `MutableMapping[str, PitItem]` and the `ContextManager` protocol, observes cloud-drive changes, emits sparse delta change files, and coordinates master leases.
 
   **Key Methods:**
+  - `Pit(pit_dir: InqPath, pit_name: str, ...)`: Opens a directory; `.pit` filenames and other path types are rejected.
+  - `open(name_or_path: str | InqPath, ...)`: Accepts a bare cloud Pit name or an explicit InqPath directory. The CLI continues to accept `.pit` filenames.
   - `__enter__()` / `__exit__()`: Context manager for atomic batch sessions and guaranteed flag cleanup.
   - `add(item: PitItem, refresh_modified: bool = True) -> bool`: Adds or updates a living entity. Validates against prohibited template markers (`{` or `<`) under CR049.
   - `add_historical(item: PitItem) -> bool`: Replays an immutable historical fragment without modifying timestamps or rejecting legacy IDs.

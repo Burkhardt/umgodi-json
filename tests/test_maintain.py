@@ -6,6 +6,8 @@ process flag pruning with --older-than, legacy event repairs, and JSON schema ou
 
 from __future__ import annotations
 
+from inqaba import InqPath
+
 import argparse
 import datetime
 import hashlib
@@ -49,8 +51,8 @@ def test_parse_duration() -> None:
 			pass
 
 
-def test_maintain_dry_run_report_only() -> None:
-	with tempfile.TemporaryDirectory() as tmp:
+def test_maintain_dry_run_report_only(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp:
 		pit_dir = Path(tmp) / "TestPit"
 		pit_dir.mkdir(parents=True)
 		canonical = pit_dir / "TestPit.pit"
@@ -65,7 +67,7 @@ def test_maintain_dry_run_report_only() -> None:
 		change_item = PitItem({"Id": "item-1", "Name": "DryRun"})
 		cf_file = ChangeFile.create(pit_dir, change_item, "Host-Proc-1234")
 
-		with Pit.open(pit_dir, read_only=True, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), read_only=True, unflagged=True) as pit:
 			res = pit.maintain(apply=False)
 
 		assert res.applied is False
@@ -82,8 +84,8 @@ def test_maintain_dry_run_report_only() -> None:
 		assert canonical.read_text(encoding="utf-8") == "[]\n"
 
 
-def test_maintain_apply_reconciliation_and_receipt_grace() -> None:
-	with tempfile.TemporaryDirectory() as tmp:
+def test_maintain_apply_reconciliation_and_receipt_grace(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp:
 		pit_dir = Path(tmp) / "TestPit"
 		pit_dir.mkdir(parents=True)
 		canonical = pit_dir / "TestPit.pit"
@@ -93,7 +95,7 @@ def test_maintain_apply_reconciliation_and_receipt_grace() -> None:
 		cf_file = ChangeFile.create(pit_dir, change_item, "Host-Proc-5555")
 
 		# First apply: merges change, persists canonical, creates receipt
-		with Pit.open(pit_dir, unflagged=True, autoload=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True, autoload=False) as pit:
 			res1 = pit.maintain(apply=True)
 
 		assert res1.applied is True
@@ -110,7 +112,7 @@ def test_maintain_apply_reconciliation_and_receipt_grace() -> None:
 		receipt_file.write_text(f"{format_iso_timestamp(past_time)}\n", encoding="utf-8")
 
 		# Second apply: grace period expired, both change file and receipt pruned
-		with Pit.open(pit_dir, unflagged=True, autoload=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True, autoload=False) as pit:
 			res2 = pit.maintain(apply=True)
 
 		assert res2.applied is True
@@ -120,8 +122,8 @@ def test_maintain_apply_reconciliation_and_receipt_grace() -> None:
 		assert not receipt_file.exists()
 
 
-def test_maintain_prune_process_flags() -> None:
-	with tempfile.TemporaryDirectory() as tmp:
+def test_maintain_prune_process_flags(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp:
 		pit_dir = Path(tmp) / "TestPit"
 		pit_dir.mkdir(parents=True)
 		canonical = pit_dir / "TestPit.pit"
@@ -155,7 +157,7 @@ def test_maintain_prune_process_flags() -> None:
 			older_than=datetime.timedelta(hours=1),
 		)
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			res = pit.maintain(opts)
 
 		assert res.process_flags_active == 1
@@ -170,8 +172,8 @@ def test_maintain_prune_process_flags() -> None:
 		assert not old_expired.exists()
 
 
-def test_maintain_repair_legacy_events() -> None:
-	with tempfile.TemporaryDirectory() as tmp:
+def test_maintain_repair_legacy_events(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp:
 		pit_dir = Path(tmp) / "TestPit"
 		pit_dir.mkdir(parents=True)
 		(pit_dir / "TestPit.pit").write_text("[]\n", encoding="utf-8")
@@ -187,7 +189,7 @@ def test_maintain_repair_legacy_events() -> None:
 
 		opts = PitMaintenanceOptions(apply=True, repair_legacy_extensions=True)
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			res = pit.maintain(opts)
 
 		assert res.legacy_artifacts_observed == 1
@@ -265,8 +267,8 @@ def test_maintain_cli_validation_rules() -> None:
 	assert cmd_maintain(args5) == 1
 
 
-def test_maintain_cli_json_schema() -> None:
-	with tempfile.TemporaryDirectory() as tmp:
+def test_maintain_cli_json_schema(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp:
 		pit_dir = Path(tmp) / "TestPit"
 		pit_dir.mkdir(parents=True)
 		canonical = pit_dir / "TestPit.pit"
@@ -315,91 +317,38 @@ def test_maintain_cli_json_schema() -> None:
 			assert key in data, f"Key '{key}' missing from maintain JSON output"
 
 
-def test_maintain_wwwa_cloud_not_hijacked_by_local_cwd_directory() -> None:
-	"""
-	Regression test: when running `jpit maintain --wwwa -c <cloud> -r AIA`,
-	if an eponymous folder `./AIA` exists in the current working directory,
-	the maintain target MUST resolve against the cloud root, not the local cwd folder.
-	"""
-	with tempfile.TemporaryDirectory() as tmp_cloud, tempfile.TemporaryDirectory() as tmp_cwd:
-		# 1. Setup cloud storage with WWWA pits under AIA/
-		cloud_root = Path(tmp_cloud) / "CloudData"
-		cloud_root.mkdir(parents=True)
-		tenant_cloud = cloud_root / "AIA"
-		for pit_name in ["Activity", "Image", "Object", "Person", "Place"]:
-			p_dir = tenant_cloud / pit_name
-			p_dir.mkdir(parents=True)
-			(p_dir / f"{pit_name}.pit").write_text("[]\n", encoding="utf-8")
+def test_maintain_wwwa_cloud_not_hijacked_by_local_cwd_directory(cloud_tenant, tmp_path, monkeypatch, capsys):
+	provider, tenant = cloud_tenant
+	monkeypatch.chdir(tmp_path)
+	(tmp_path / tenant.name).mkdir()
+	for pit in ("Activity", "Object", "Person", "Place"):
+		directory = tenant / pit
+		directory.mkdir()
+		(directory / f"{pit}.pit").write_text("[]", encoding="utf-8")
+	args = argparse.Namespace(pit=None, wwwa=True, cloud=provider, root=tenant.name,
+		json=True, machine="all", level="Trace", apply=False, prune_process_flags=False,
+		older_than=None, repair_legacy_extensions=False, archive_events=False)
+	assert cmd_maintain(args) == 0
+	rows = json.loads(capsys.readouterr().out)
+	assert isinstance(rows, list)
+	assert len(rows) == 4
+	assert all(Path(row["PitFile"]).is_relative_to(tenant) for row in rows)
 
-		# 2. Setup a dummy local ./AIA directory in cwd (without .pit files)
-		local_aia = Path(tmp_cwd) / "AIA"
-		local_aia.mkdir(parents=True)
-
-		# 3. Configure mock OsConfig with our cloud_root
-		import os
-		from umgodi.config import OsConfig
-		mock_cfg = OsConfig({"Cloud": {"MockDrive": str(cloud_root)}})
-		OsConfig._instance = mock_cfg
-
-		orig_cwd = os.getcwd()
-		try:
-			os.chdir(tmp_cwd)
-			args = argparse.Namespace(
-				pit=None,
-				apply=False,
-				prune_process_flags=False,
-				older_than=None,
-				repair_legacy_extensions=False,
-				archive_events=False,
-				json=True,
-				wwwa=True,
-				cloud="MockDrive",
-				root="AIA",
-			)
-
-			import io
-			import sys
-
-			buf = io.StringIO()
-			err_buf = io.StringIO()
-			old_stdout = sys.stdout
-			old_stderr = sys.stderr
-			try:
-				sys.stdout = buf
-				sys.stderr = err_buf
-				rc = cmd_maintain(args)
-			finally:
-				sys.stdout = old_stdout
-				sys.stderr = old_stderr
-
-			assert rc == 0, f"Expected cmd_maintain to succeed, got rc={rc}, err={err_buf.getvalue()}"
-			data = json.loads(buf.getvalue())
-			assert isinstance(data, list)
-			assert len(data) == 4
-			for item in data:
-				assert str(cloud_root) in item["PitFile"]
-				assert str(local_aia) not in item["PitFile"]
-		finally:
-			os.chdir(orig_cwd)
-			OsConfig.reset()
 
 
 @pytest.fixture
-def fast_tenant(tmp_path):
-	config = tmp_path / "JsonPit" / "timing.json5"
-	config.parent.mkdir()
-	config.write_text("{ SyncPitDurationSeconds:0, SyncFlagDurationSeconds:0, BufferSeconds:0 }")
-	tenant = tmp_path / "Tenant"
+def realistic_tenant(pit_test_root):
+	tenant = pit_test_root / "Tenant"
 	tenant.mkdir()
 	return tenant
 
 
 @pytest.mark.parametrize("age", [datetime.timedelta(minutes=5), datetime.timedelta(days=8)])
-def test_historical_save_publishes_current_lease_without_changing_history(fast_tenant, age):
-	directory = fast_tenant / "HistoricalSave"
+def test_historical_save_publishes_current_lease_without_changing_history(realistic_tenant, age):
+	directory = realistic_tenant / "HistoricalSave"
 	directory.mkdir()
 	old = utcnow() - age
-	with Pit.open(directory, autoload=False) as pit:
+	with Pit.open(InqPath.from_directory(directory), autoload=False) as pit:
 		pit.add_historical(PitItem({"Id": "Past", "Modified": format_iso_timestamp(old)}, invalidate=False))
 		reader_checkpoint = utcnow() - datetime.timedelta(seconds=2)
 		before_save = utcnow()
@@ -416,20 +365,20 @@ def test_historical_save_publishes_current_lease_without_changing_history(fast_t
 		assert data[0][0]["Modified"] == format_iso_timestamp(old)
 
 
-def test_jpit_maintain_historical_store_retires_elapsed_receipt(fast_tenant, capsys):
-	directory = fast_tenant / "HistoricalCli"
+def test_jpit_maintain_historical_store_retires_elapsed_receipt(realistic_tenant, capsys):
+	directory = realistic_tenant / "HistoricalCli"
 	directory.mkdir()
 	old = format_iso_timestamp(utcnow() - datetime.timedelta(days=8))
 	first = PitItem({"Id": "First", "Modified": old}, invalidate=False)
 	change = ChangeFile.create(directory, first, "Peer-app-42")
-	with Pit.open(directory, unflagged=True, autoload=False) as fixture:
+	with Pit.open(InqPath.from_directory(directory), unflagged=True, autoload=False) as fixture:
 		assert fixture.maintain(apply=True).receipts_created == 1
 		receipt = change.with_suffix(".receipt")
 		receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
 		second = PitItem({"Id": "Second", "Modified": old}, invalidate=False)
 		pending = ChangeFile.create(directory, second, "Peer-app-42")
 
-	assert main(["maintain", "HistoricalCli", "-r", str(fast_tenant), "--apply", "--json"]) == 0
+	assert main(["maintain", "HistoricalCli", "-r", str(realistic_tenant), "--apply", "--json"]) == 0
 	result = json.loads(capsys.readouterr().out)
 	assert result["CurrentMaster"] and result["CanonicalPersisted"]
 	assert result["ChangeFilesRemoved"] == result["ReceiptsRemoved"] == 1
@@ -442,8 +391,8 @@ def test_jpit_maintain_historical_store_retires_elapsed_receipt(fast_tenant, cap
 	assert all(fragment["Modified"] == old for history in data for fragment in history)
 
 
-def test_historical_store_renews_lease_and_retires_accounted_changes(fast_tenant) -> None:
-	directory = fast_tenant / "Historical"
+def test_historical_store_renews_lease_and_retires_accounted_changes(realistic_tenant) -> None:
+	directory = realistic_tenant / "Historical"
 	directory.mkdir()
 	old = format_iso_timestamp(utcnow() - datetime.timedelta(days=8))
 
@@ -452,7 +401,7 @@ def test_historical_store_renews_lease_and_retires_accounted_changes(fast_tenant
 		return ChangeFile.create(directory, item, "Peer-app-42")
 
 	change = publish("First")
-	with Pit.open(directory, autoload=False) as pit:
+	with Pit.open(InqPath.from_directory(directory), autoload=False) as pit:
 		assert pit.maintain(apply=True).canonical_persisted
 		assert pit.master_flag.ticket().state == "Returned"
 		assert pit.master_flag.ticket().written >= pit.master_flag.time
@@ -469,12 +418,12 @@ def test_historical_store_renews_lease_and_retires_accounted_changes(fast_tenant
 		assert {frag["Id"] for history in data for frag in history} == {"First", "Second"}
 
 
-def test_maintenance_rechecks_owner_and_canonical_evidence_before_cleanup(fast_tenant, monkeypatch):
+def test_maintenance_rechecks_owner_and_canonical_evidence_before_cleanup(realistic_tenant, monkeypatch):
 	for failure in ("foreign-owner", "missing-history"):
-		directory = fast_tenant / failure
+		directory = realistic_tenant / failure
 		directory.mkdir()
 		change = ChangeFile.create(directory, PitItem({"Id": "Old"}), "Peer-app-42")
-		with Pit.open(directory, autoload=False) as pit:
+		with Pit.open(InqPath.from_directory(directory), autoload=False) as pit:
 			assert pit.maintain(apply=True).receipts_created == 1
 			receipt = change.with_suffix(".receipt")
 			receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
@@ -500,8 +449,8 @@ def test_maintenance_rechecks_owner_and_canonical_evidence_before_cleanup(fast_t
 				assert f"Canonical pit does not yet account for {change.name}" in result.deferred
 
 
-def test_writable_open_preserves_backlog_until_maintenance(fast_tenant):
-	directory = fast_tenant / "Backlog"
+def test_writable_open_preserves_backlog_until_maintenance(realistic_tenant):
+	directory = realistic_tenant / "Backlog"
 	directory.mkdir()
 	old = utcnow() - datetime.timedelta(days=2)
 	eligible = format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11))
@@ -516,9 +465,9 @@ def test_writable_open_preserves_backlog_until_maintenance(fast_tenant):
 	canonical = directory / "Backlog.pit"
 	canonical.write_text(json.dumps(data))
 	last_write = canonical.stat().st_mtime_ns
-	with Pit.open(directory, read_only=True, unflagged=True):
+	with Pit.open(InqPath.from_directory(directory), read_only=True, unflagged=True):
 		assert all(change.is_file() for change in changes)
-	with Pit.open(directory) as opened:
+	with Pit.open(InqPath.from_directory(directory)) as opened:
 		assert len(opened) == 102
 		assert canonical.stat().st_mtime_ns == last_write
 		assert all(p.exists() for p in changes)
@@ -527,8 +476,8 @@ def test_writable_open_preserves_backlog_until_maintenance(fast_tenant):
 		assert all(p.is_file() and p.with_suffix(".receipt").is_file() for p in changes[100:])
 
 
-def test_jpit_maintain_apply_respects_foreign_lease(fast_tenant, capsys):
-	directory = fast_tenant / "Busy"
+def test_jpit_maintain_apply_respects_foreign_lease(realistic_tenant, capsys):
+	directory = realistic_tenant / "Busy"
 	directory.mkdir()
 	item = PitItem({"Id": "Canonical"})
 	(directory / "Busy.pit").write_text(json.dumps([[item.to_dict()]]))
@@ -537,22 +486,22 @@ def test_jpit_maintain_apply_respects_foreign_lease(fast_tenant, capsys):
 	receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
 	foreign = MasterFlagFile(directory)
 	foreign.update(originator="Peer-app-42")
-	assert main(["maintain", "Busy", "-r", str(fast_tenant), "--apply", "--json"]) == 0
+	assert main(["maintain", "Busy", "-r", str(realistic_tenant), "--apply", "--json"]) == 0
 	result = json.loads(capsys.readouterr().out)
 	assert not result["CurrentMaster"]
 	assert result["ChangeFilesRemoved"] == result["ReceiptsRemoved"] == 0
 	assert foreign.is_owned_by("Peer-app-42") and change.is_file() and receipt.is_file()
 
 
-def test_jpit_seed_ordinary_open_retires_accounted_change(fast_tenant):
-	directory = fast_tenant / "Person"
+def test_jpit_seed_ordinary_open_retires_accounted_change(realistic_tenant):
+	directory = realistic_tenant / "Person"
 	directory.mkdir()
 	item = PitItem({"Id": "Imported"})
 	(directory / "Person.pit").write_text(json.dumps([[item.to_dict()]]))
 	change = ChangeFile.create(directory, item, "Peer-app-42")
 	receipt = change.with_suffix(".receipt")
 	receipt.write_text(format_iso_timestamp(utcnow() - datetime.timedelta(minutes=11)))
-	source = fast_tenant / "new-person.json"
+	source = realistic_tenant / "new-person.json"
 	source.write_text('{"Id":"NewEntry"}')
-	assert main(["seed", "Person", "--source", str(source), "-r", str(fast_tenant), "-n"]) == 0
+	assert main(["seed", "Person", "--source", str(source), "-r", str(realistic_tenant), "-n"]) == 0
 	assert not change.exists() and not receipt.exists()

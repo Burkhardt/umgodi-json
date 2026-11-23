@@ -13,6 +13,8 @@ Verifies:
 
 from __future__ import annotations
 
+from inqaba import InqPath
+
 import datetime
 from pathlib import Path
 import tempfile
@@ -29,10 +31,10 @@ from umgodi import (
 )
 
 
-def _new_pit(tracking_mode: MutationTrackingMode | None = None) -> tuple[Pit, tempfile.TemporaryDirectory[str]]:
-	td = tempfile.TemporaryDirectory()
+def _new_pit(pit_test_root: Path, tracking_mode: MutationTrackingMode | None = None) -> tuple[Pit, tempfile.TemporaryDirectory[str]]:
+	td = tempfile.TemporaryDirectory(dir=pit_test_root)
 	p = Pit(
-		Path(td.name),
+		InqPath.from_directory(Path(td.name)),
 		"TestPit",
 		read_only=False,
 		autoload=False,
@@ -50,8 +52,8 @@ def _sample_item() -> PitItem:
 	})
 
 
-def test_original_aliases_append_sparse_fragments_without_changing_earlier_history() -> None:
-	pit, td = _new_pit()
+def test_original_aliases_append_sparse_fragments_without_changing_earlier_history(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item()
 		who = item["Who"]
@@ -81,8 +83,8 @@ def test_original_aliases_append_sparse_fragments_without_changing_earlier_histo
 		td.cleanup()
 
 
-def test_silent_scalar_edits_are_coalesced_and_timestamped_when_save_detects_them() -> None:
-	pit, td = _new_pit()
+def test_silent_scalar_edits_are_coalesced_and_timestamped_when_save_detects_them(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item()
 		pit.add(item)
@@ -117,8 +119,8 @@ def test_silent_scalar_edits_are_coalesced_and_timestamped_when_save_detects_the
 		td.cleanup()
 
 
-def test_sparse_add_preserves_live_identity_and_previously_silent_edits() -> None:
-	pit, td = _new_pit()
+def test_sparse_add_preserves_live_identity_and_previously_silent_edits(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item()
 		pit.add(item)
@@ -137,8 +139,8 @@ def test_sparse_add_preserves_live_identity_and_previously_silent_edits() -> Non
 		td.cleanup()
 
 
-def test_load_preserves_silent_local_edits_and_held_references() -> None:
-	pit, td = _new_pit()
+def test_load_preserves_silent_local_edits_and_held_references(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item()
 		pit.add(item)
@@ -157,8 +159,8 @@ def test_load_preserves_silent_local_edits_and_held_references() -> None:
 		td.cleanup()
 
 
-def test_historical_merge_folds_at_acceptance_and_preserves_held_references() -> None:
-	pit, td = _new_pit()
+def test_historical_merge_folds_at_acceptance_and_preserves_held_references(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		base_time = utcnow() - datetime.timedelta(minutes=3)
 		pit.add_historical(PitItem({
@@ -185,8 +187,8 @@ def test_historical_merge_folds_at_acceptance_and_preserves_held_references() ->
 		td.cleanup()
 
 
-def test_helpers_commit_once_and_tombstones_prune_the_live_object() -> None:
-	pit, td = _new_pit()
+def test_helpers_commit_once_and_tombstones_prune_the_live_object(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item()
 		pit.add(item)
@@ -210,8 +212,8 @@ def test_helpers_commit_once_and_tombstones_prune_the_live_object() -> None:
 		td.cleanup()
 
 
-def test_native_mutations_work_with_observable_list_and_preserve_sparse_history() -> None:
-	pit, td = _new_pit()
+def test_native_mutations_work_with_observable_list_and_preserve_sparse_history(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item()
 		item["Tags"] = ["first"]
@@ -234,20 +236,20 @@ def test_native_mutations_work_with_observable_list_and_preserve_sparse_history(
 		td.cleanup()
 
 
-def test_protected_native_and_silent_mutations_roll_back_without_history() -> None:
-	pit, td = _new_pit()
+def test_protected_native_and_silent_mutations_roll_back_without_history(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item()
 		pit.add(item)
 
 		try:
-			item["Id"] = "Other"
+			item["Id"] = "Other"  # vikela-expected: RAI012
 			assert False, "Expected ProtectedAttributeError"
 		except ProtectedAttributeError:
 			pass
 
 		try:
-			del item["Id"]
+			del item["Id"]  # vikela-expected: RAI012
 			assert False, "Expected ProtectedAttributeError"
 		except ProtectedAttributeError:
 			pass
@@ -270,8 +272,8 @@ def test_protected_native_and_silent_mutations_roll_back_without_history() -> No
 		td.cleanup()
 
 
-def test_historical_values_and_snapshots_are_detached_from_live_and_stored_objects() -> None:
-	pit, td = _new_pit()
+def test_historical_values_and_snapshots_are_detached_from_live_and_stored_objects(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item()
 		pit.add(item)
@@ -295,8 +297,8 @@ def test_historical_values_and_snapshots_are_detached_from_live_and_stored_objec
 		td.cleanup()
 
 
-def test_dispose_captures_silent_edits_and_reopen_builds_stable_live_objects() -> None:
-	pit, td = _new_pit()
+def test_dispose_captures_silent_edits_and_reopen_builds_stable_live_objects(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item()
 		pit.add(item)
@@ -319,13 +321,13 @@ def test_dispose_captures_silent_edits_and_reopen_builds_stable_live_objects() -
 		td.cleanup()
 
 
-def test_tracking_mode_is_captured_per_instance_and_never_persisted() -> None:
+def test_tracking_mode_is_captured_per_instance_and_never_persisted(pit_test_root) -> None:
 	prev = Pit.default_mutation_tracking_mode
 	try:
 		Pit.default_mutation_tracking_mode = MutationTrackingMode.TrackedChangesWithFallback
-		cli, td_cli = _new_pit()
+		cli, td_cli = _new_pit(pit_test_root)
 		Pit.default_mutation_tracking_mode = MutationTrackingMode.TrackedChangesOnly
-		server, td_server = _new_pit()
+		server, td_server = _new_pit(pit_test_root)
 
 		assert cli.tracking_mode == MutationTrackingMode.TrackedChangesWithFallback
 		assert cli.TrackingMode == MutationTrackingMode.TrackedChangesWithFallback
@@ -350,12 +352,12 @@ def test_tracking_mode_is_captured_per_instance_and_never_persisted() -> None:
 		Pit.default_mutation_tracking_mode = prev
 
 
-def test_both_modes_keep_original_references_and_track_indexer_edits_immediately() -> None:
+def test_both_modes_keep_original_references_and_track_indexer_edits_immediately(pit_test_root) -> None:
 	prev = Pit.default_mutation_tracking_mode
 	try:
 		for mode in (MutationTrackingMode.TrackedChangesOnly, MutationTrackingMode.TrackedChangesWithFallback):
 			Pit.default_mutation_tracking_mode = mode
-			pit, td = _new_pit()
+			pit, td = _new_pit(pit_test_root)
 			try:
 				item = _sample_item()
 				who = item["Who"]
@@ -374,11 +376,11 @@ def test_both_modes_keep_original_references_and_track_indexer_edits_immediately
 		Pit.default_mutation_tracking_mode = prev
 
 
-def test_tracked_changes_only_does_not_reconcile_unsupported_scalar_edits_at_save() -> None:
+def test_tracked_changes_only_does_not_reconcile_unsupported_scalar_edits_at_save(pit_test_root) -> None:
 	prev = Pit.default_mutation_tracking_mode
 	try:
 		Pit.default_mutation_tracking_mode = MutationTrackingMode.TrackedChangesOnly
-		pit, td = _new_pit()
+		pit, td = _new_pit(pit_test_root)
 		try:
 			item = _sample_item()
 			pit.add(item)
@@ -398,9 +400,9 @@ def test_tracked_changes_only_does_not_reconcile_unsupported_scalar_edits_at_sav
 		Pit.default_mutation_tracking_mode = prev
 
 
-def test_cr077_readding_live_handle_is_not_full_snapshot_write() -> None:
+def test_cr077_readding_live_handle_is_not_full_snapshot_write(pit_test_root) -> None:
 	for mode in MutationTrackingMode:
-		pit, td = _new_pit(mode)
+		pit, td = _new_pit(pit_test_root, mode)
 		try:
 			item = _sample_item(); pit.add(item)
 			item.set_property({"Status": "Doing"})
@@ -413,8 +415,8 @@ def test_cr077_readding_live_handle_is_not_full_snapshot_write() -> None:
 			pit.close(); td.cleanup()
 
 
-def test_cr077_detached_copy_cannot_bypass_lifecycle_guard() -> None:
-	pit, td = _new_pit()
+def test_cr077_detached_copy_cannot_bypass_lifecycle_guard(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item(); pit.add(item)
 		before = len(pit.historic_items[item.id].history)
@@ -430,14 +432,14 @@ def test_cr077_detached_copy_cannot_bypass_lifecycle_guard() -> None:
 		pit.close(); td.cleanup()
 
 
-def test_cr077_matching_id_assertion_and_atomic_invalid_patch() -> None:
-	pit, td = _new_pit()
+def test_cr077_matching_id_assertion_and_atomic_invalid_patch(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item(); pit.add(item)
 		assert item.set_property({"Id": item.id, "Status": "Doing"})
 		before = len(pit.historic_items[item.id].history)
 		try:
-			item.set_property({"Status": "Bad", "Modified": "invalid"})
+			item.set_property({"Status": "Bad", "Modified": "invalid"})  # vikela-expected: RAI012
 		except ProtectedAttributeError:
 			pass
 		else:
@@ -448,8 +450,8 @@ def test_cr077_matching_id_assertion_and_atomic_invalid_patch() -> None:
 		pit.close(); td.cleanup()
 
 
-def test_cr077_merge_and_array_patch_are_single_atomic_sparse_mutations() -> None:
-	pit, td = _new_pit()
+def test_cr077_merge_and_array_patch_are_single_atomic_sparse_mutations(pit_test_root) -> None:
+	pit, td = _new_pit(pit_test_root)
 	try:
 		item = _sample_item(); pit.add(item)
 		assert item.merge({"Status": "Pending", "Location": "First"})
@@ -470,8 +472,8 @@ def test_cr077_merge_and_array_patch_are_single_atomic_sparse_mutations() -> Non
 		pit.close(); td.cleanup()
 
 
-def test_cr077_historical_replay_cannot_bypass_live_ownership() -> None:
-	first, first_dir = _new_pit(); second, second_dir = _new_pit()
+def test_cr077_historical_replay_cannot_bypass_live_ownership(pit_test_root) -> None:
+	first, first_dir = _new_pit(pit_test_root); second, second_dir = _new_pit(pit_test_root)
 	try:
 		item = _sample_item(); first.add(item)
 		for write in (second.add, second.add_historical):
@@ -486,9 +488,9 @@ def test_cr077_historical_replay_cannot_bypass_live_ownership() -> None:
 		first.close(); second.close(); first_dir.cleanup(); second_dir.cleanup()
 
 
-def test_cr077_live_lifecycle_property_setters_are_guarded_in_both_modes() -> None:
+def test_cr077_live_lifecycle_property_setters_are_guarded_in_both_modes(pit_test_root) -> None:
 	for mode in MutationTrackingMode:
-		pit, td = _new_pit(mode)
+		pit, td = _new_pit(pit_test_root, mode)
 		try:
 			item = _sample_item(); pit.add(item)
 			before = item.to_dict(); count = len(pit.historic_items[item.id].history)

@@ -5,6 +5,8 @@ Verifies property tombstone semantics, nested path tombstones, and state project
 
 from __future__ import annotations
 
+from inqaba import InqPath
+
 import tempfile
 import time
 from pathlib import Path
@@ -13,14 +15,14 @@ from umgodi.item import PitItem
 from umgodi.store import Pit
 
 
-def _create_temp_pit() -> tuple[Pit, tempfile.TemporaryDirectory[str]]:
-	td = tempfile.TemporaryDirectory()
-	pit = Pit(Path(td.name), "TestPit", read_only=False, unflagged=True)
+def _create_temp_pit(pit_test_root: Path) -> tuple[Pit, tempfile.TemporaryDirectory[str]]:
+	td = tempfile.TemporaryDirectory(dir=pit_test_root)
+	pit = Pit(InqPath.from_directory(Path(td.name)), "TestPit", read_only=False, unflagged=True)
 	return pit, td
 
 
-def test_delete_property_removes_attribute_no_null_shadow(temp_pit: Pit | None = None) -> None:
-	pit, td = (temp_pit, None) if temp_pit else _create_temp_pit()
+def test_delete_property_removes_attribute_no_null_shadow(pit_test_root: Path) -> None:
+	pit, td = _create_temp_pit(pit_test_root)
 	try:
 		item_id = "DP_basic_1"
 		item = PitItem(id=item_id)
@@ -43,17 +45,13 @@ def test_delete_property_removes_attribute_no_null_shadow(temp_pit: Pit | None =
 			td.cleanup()
 
 
-def test_delete_property_survives_reload_from_disk(tmp_path: Path | None = None) -> None:
-	td = None
-	if tmp_path is None:
-		td = tempfile.TemporaryDirectory()
-		root = Path(td.name)
-	else:
-		root = tmp_path
+def test_delete_property_survives_reload_from_disk(pit_test_root: Path) -> None:
+	td = tempfile.TemporaryDirectory(dir=pit_test_root)
+	root = Path(td.name)
 
 	try:
 		item_id = "DP_reload_1"
-		with Pit(root, "TestPit", read_only=False, unflagged=True) as pit:
+		with Pit(InqPath.from_directory(root), "TestPit", read_only=False, unflagged=True) as pit:
 			item = PitItem(id=item_id)
 			item.set_property({"A": 1, "B": 2})
 			pit.add(item)
@@ -65,7 +63,7 @@ def test_delete_property_survives_reload_from_disk(tmp_path: Path | None = None)
 			pit.save(force=True)
 
 		# Reopen fresh instance from disk
-		with Pit(root, "TestPit", read_only=True, unflagged=True) as reloaded:
+		with Pit(InqPath.from_directory(root), "TestPit", read_only=True, unflagged=True) as reloaded:
 			projected = reloaded.get(item_id)
 			assert projected is not None
 			assert "A" not in projected
@@ -75,8 +73,8 @@ def test_delete_property_survives_reload_from_disk(tmp_path: Path | None = None)
 			td.cleanup()
 
 
-def test_delete_property_item_remains_live_others_intact(temp_pit: Pit | None = None) -> None:
-	pit, td = (temp_pit, None) if temp_pit else _create_temp_pit()
+def test_delete_property_item_remains_live_others_intact(pit_test_root: Path) -> None:
+	pit, td = _create_temp_pit(pit_test_root)
 	try:
 		item_id = "DP_live_1"
 		item = PitItem(id=item_id)
@@ -100,8 +98,8 @@ def test_delete_property_item_remains_live_others_intact(temp_pit: Pit | None = 
 			td.cleanup()
 
 
-def test_partial_null_fragment_deletes_only_that_attribute(temp_pit: Pit | None = None) -> None:
-	pit, td = (temp_pit, None) if temp_pit else _create_temp_pit()
+def test_partial_null_fragment_deletes_only_that_attribute(pit_test_root: Path) -> None:
+	pit, td = _create_temp_pit(pit_test_root)
 	try:
 		item_id = "DP_partial_1"
 		item = PitItem(id=item_id)
@@ -123,8 +121,8 @@ def test_partial_null_fragment_deletes_only_that_attribute(temp_pit: Pit | None 
 			td.cleanup()
 
 
-def test_delete_property_then_reintroduce_works(temp_pit: Pit | None = None) -> None:
-	pit, td = (temp_pit, None) if temp_pit else _create_temp_pit()
+def test_delete_property_then_reintroduce_works(pit_test_root: Path) -> None:
+	pit, td = _create_temp_pit(pit_test_root)
 	try:
 		item_id = "DP_readd_1"
 		item = PitItem(id=item_id)
@@ -148,8 +146,8 @@ def test_delete_property_then_reintroduce_works(temp_pit: Pit | None = None) -> 
 			td.cleanup()
 
 
-def test_delete_property_preserves_history_time_travel(temp_pit: Pit | None = None) -> None:
-	pit, td = (temp_pit, None) if temp_pit else _create_temp_pit()
+def test_delete_property_preserves_history_time_travel(pit_test_root: Path) -> None:
+	pit, td = _create_temp_pit(pit_test_root)
 	try:
 		item_id = "DP_history_1"
 		item = PitItem(id=item_id)
@@ -172,8 +170,8 @@ def test_delete_property_preserves_history_time_travel(temp_pit: Pit | None = No
 			td.cleanup()
 
 
-def test_nested_path_tombstone(temp_pit: Pit | None = None) -> None:
-	pit, td = (temp_pit, None) if temp_pit else _create_temp_pit()
+def test_nested_path_tombstone(pit_test_root: Path) -> None:
+	pit, td = _create_temp_pit(pit_test_root)
 	try:
 		item_id = "DP_nested_path_1"
 		item = PitItem(id=item_id)

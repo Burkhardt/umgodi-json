@@ -52,8 +52,8 @@ def test_log_level_display_name() -> None:
 	assert LogLevel.CRITICAL.display_name == "Critical"
 
 
-def test_missing_events_dir() -> None:
-	with tempfile.TemporaryDirectory() as tmpdir:
+def test_missing_events_dir(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		p = Path(tmpdir)
 		res = PitAudit.inspect(p)
 		assert res.events == []
@@ -61,8 +61,8 @@ def test_missing_events_dir() -> None:
 		assert res.succeeded
 
 
-def test_inspect_loose_event_files() -> None:
-	with tempfile.TemporaryDirectory() as tmpdir:
+def test_inspect_loose_event_files(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		p = Path(tmpdir)
 		events_dir = p / "Events"
 		events_dir.mkdir(parents=True)
@@ -90,8 +90,8 @@ def test_inspect_loose_event_files() -> None:
 		assert ev.message == "Loose event published."
 
 
-def test_inspect_zip_archive() -> None:
-	with tempfile.TemporaryDirectory() as tmpdir:
+def test_inspect_zip_archive(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		p = Path(tmpdir)
 		events_dir = p / "Events"
 		events_dir.mkdir(parents=True)
@@ -117,8 +117,8 @@ def test_inspect_zip_archive() -> None:
 		assert ev.event_id == "ev-002"
 
 
-def test_deduplication_between_loose_and_zip() -> None:
-	with tempfile.TemporaryDirectory() as tmpdir:
+def test_deduplication_between_loose_and_zip(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		p = Path(tmpdir)
 		events_dir = p / "Events"
 		events_dir.mkdir(parents=True)
@@ -141,8 +141,8 @@ def test_deduplication_between_loose_and_zip() -> None:
 		assert res.succeeded
 
 
-def test_conflicting_event_identity_reports_issue() -> None:
-	with tempfile.TemporaryDirectory() as tmpdir:
+def test_conflicting_event_identity_reports_issue(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		p = Path(tmpdir)
 		events_dir = p / "Events"
 		events_dir.mkdir(parents=True)
@@ -166,8 +166,8 @@ def test_conflicting_event_identity_reports_issue() -> None:
 		assert any("conflict-123" in issue for issue in res.issues)
 
 
-def test_filtering_by_machine_and_level() -> None:
-	with tempfile.TemporaryDirectory() as tmpdir:
+def test_filtering_by_machine_and_level(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		p = Path(tmpdir)
 		events_dir = p / "Events"
 		events_dir.mkdir(parents=True)
@@ -190,8 +190,8 @@ def test_filtering_by_machine_and_level() -> None:
 		assert res_both.events[0].event_id == "2"
 
 
-def test_audit_cli_validation_rules() -> None:
-	with tempfile.TemporaryDirectory() as tmpdir:
+def test_audit_cli_validation_rules(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		p = Path(tmpdir)
 		pit_file = p / "TestPit.pit"
 		pit_file.write_text("{}", encoding="utf-8")
@@ -220,8 +220,8 @@ def test_audit_cli_validation_rules() -> None:
 		assert "audit requires exactly one <PitName>, or --wwwa" in err2.getvalue()
 
 
-def test_audit_cli_output_table_and_json() -> None:
-	with tempfile.TemporaryDirectory() as tmpdir:
+def test_audit_cli_output_table_and_json(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		p = Path(tmpdir)
 		events_dir = p / "Events"
 		events_dir.mkdir(parents=True)
@@ -272,52 +272,17 @@ def test_audit_cli_output_table_and_json() -> None:
 		assert parsed[0]["EventId"] == "ev-001"
 
 
-def test_audit_wwwa_cloud_not_hijacked_by_local_cwd_directory() -> None:
-	"""
-	Regression test: when running `jpit audit --wwwa -c <cloud> -r AIA`,
-	if an eponymous folder `./AIA` exists in the current working directory,
-	the audit target MUST resolve against the cloud root, not the local cwd folder.
-	"""
-	with tempfile.TemporaryDirectory() as tmp_cloud, tempfile.TemporaryDirectory() as tmp_cwd:
-		cloud_root = Path(tmp_cloud) / "CloudData"
-		cloud_root.mkdir(parents=True)
-		tenant_cloud = cloud_root / "AIA"
-		for pit_name in ["Person", "Object", "Place", "Activity"]:
-			p_dir = tenant_cloud / pit_name
-			p_dir.mkdir(parents=True)
-			(p_dir / f"{pit_name}.pit").write_text("[]\n", encoding="utf-8")
-
-		# Create local ./AIA in cwd without .pit files
-		local_aia = Path(tmp_cwd) / "AIA"
-		local_aia.mkdir(parents=True)
-
-		from umgodi.config import OsConfig
-		mock_cfg = OsConfig({"Cloud": {"MockDrive": str(cloud_root)}})
-		OsConfig._instance = mock_cfg
-
-		orig_cwd = os.getcwd()
-		try:
-			os.chdir(tmp_cwd)
-			args = argparse.Namespace(
-				pit=None,
-				wwwa=True,
-				cloud="MockDrive",
-				root="AIA",
-				machine="all",
-				level="Trace",
-				json=True,
-			)
-			out_json = io.StringIO()
-			old_out = sys.stdout
-			try:
-				sys.stdout = out_json
-				ret = cmd_audit(args)
-			finally:
-				sys.stdout = old_out
-
-			assert ret == 0
-			parsed = json.loads(out_json.getvalue())
-			assert isinstance(parsed, list)
-		finally:
-			os.chdir(orig_cwd)
-			OsConfig.reset()
+def test_audit_wwwa_cloud_not_hijacked_by_local_cwd_directory(cloud_tenant, tmp_path, monkeypatch, capsys):
+	provider, tenant = cloud_tenant
+	monkeypatch.chdir(tmp_path)
+	(tmp_path / tenant.name).mkdir()
+	for pit in ("Activity", "Object", "Person", "Place"):
+		directory = tenant / pit
+		directory.mkdir()
+		(directory / f"{pit}.pit").write_text("[]", encoding="utf-8")
+	args = argparse.Namespace(pit=None, wwwa=True, cloud=provider, root=tenant.name,
+		json=True, machine="all", level="Trace", apply=False, prune_process_flags=False,
+		older_than=None, repair_legacy_extensions=False, archive_events=False)
+	assert cmd_audit(args) == 0
+	rows = json.loads(capsys.readouterr().out)
+	assert isinstance(rows, list)

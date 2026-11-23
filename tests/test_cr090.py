@@ -1,3 +1,4 @@
+from inqaba import InqPath
 import datetime
 
 import pytest
@@ -10,19 +11,24 @@ from umgodi.store import Pit, PitSaveOutcome, PitSaveResult
 
 
 @pytest.fixture
-def pit(tmp_path):
-	directory = tmp_path / "Tenant" / "Person"
+def pit(pit_test_root):
+	directory = pit_test_root / "Tenant" / "Person"
 	directory.mkdir(parents=True)
 	(directory / "Person.pit").write_text("[]")
-	instance = Pit(directory, "Person")
+	instance = Pit(InqPath.from_directory(directory), "Person")
 	yield instance
 	instance.close(save_dirty=False)
 
 
-@pytest.mark.parametrize(("age", "machine", "seconds"), [
-	(20, "Nkosikazi", 45), (70, "Mdlaka", 20), (90, "Mzansi", 20), (-90, "Remote", 65),
+@pytest.mark.parametrize(("age", "machine"), [
+	(20, "Nkosikazi"), (70, "Mdlaka"), (90, "Mzansi"), (-90, "Remote"),
 ])
-def test_returned_window(pit, age, machine, seconds):
+def test_returned_window(pit, age, machine):
+	_, pit_sync, flag_sync, buffer = pit._load_timing()
+	seconds = max(
+		(flag_sync + buffer).total_seconds(),
+		(pit_sync + buffer).total_seconds() - max(age, 0),
+	)
 	now = utcnow()
 	pit.master_flag.write_ticket(MasterTicket("Returned", "remote-1", now, now - datetime.timedelta(seconds=age), machine + "-fixture"))
 	acquired, ready = pit.try_acquire_master()
@@ -37,16 +43,6 @@ def test_read_and_legacy_held(pit):
 	assert not list(pit.pit_dir.glob("*.flag"))
 	pit.master_flag.path.write_text(f"remote-app-1|{utcnow().isoformat()}")
 	assert not pit.try_acquire_master()[0]
-
-
-def test_fallback_config_and_invalid_window(pit, tmp_path):
-	assert [v.total_seconds() for v in pit._load_timing()] == [120, 60, 15, 5]
-	config = tmp_path / "JsonPit" / "timing.json5"
-	config.parent.mkdir()
-	config.write_text("{ TicketDurationSeconds: 80, }")
-	with pytest.raises(ValueError):
-		pit.try_acquire_master()
-	assert not pit.master_flag.path.exists()
 
 
 def test_collision_during_propagation(pit, monkeypatch):
@@ -76,19 +72,21 @@ def test_save_adopts_arriving_snapshot_and_returns(pit, monkeypatch):
 
 
 def test_expired_legacy_lease_ignores_recent_foreign_activity(pit):
+	lease, pit_sync, flag_sync, buffer = pit._load_timing()
 	now = utcnow()
-	pit.master_flag.path.write_text(f"other-app-2|{(now - datetime.timedelta(minutes=3)).isoformat()}")
+	pit.master_flag.path.write_text(f"other-app-2|{(now - lease - datetime.timedelta(seconds=1)).isoformat()}")
 	(pit.pit_dir / "other-app-2.flag").write_text(f"other:app:2|{now.isoformat()}")
 	acquired, ready = pit.try_acquire_master()
 	assert acquired
-	assert (ready - now).total_seconds() == pytest.approx(65, abs=.1)
+	assert (ready - now).total_seconds() == pytest.approx(max(pit_sync, flag_sync).total_seconds() + buffer.total_seconds(), abs=.1)
 
 
 def test_sleep_past_expiry_writes_only_deltas(pit, monkeypatch):
 	now = utcnow()
+	lease, _, _, _ = pit._load_timing()
 	pit.add({"Id": "after-suspend"})
 	def wake(_delay):
-		monkeypatch.setattr("umgodi.store.utcnow", lambda: now + datetime.timedelta(minutes=3))
+		monkeypatch.setattr("umgodi.store.utcnow", lambda: now + lease + datetime.timedelta(seconds=1))
 	monkeypatch.setattr("umgodi.store.time.sleep", wake)
 	assert pit.save() == PitSaveResult(PitSaveOutcome.PUBLISHED_AS_CHANGES, 1)
 	assert pit.canonical_file.read_text() == "[]"

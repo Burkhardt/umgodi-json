@@ -8,9 +8,6 @@
 		RootName: "{root}/AIA.ParitySuite.02_Changes",
 		PitRoot: "{root}/AIA.ParitySuite.02_Changes"
 	},
-	Construct: [
-		"rm -rf {PitRoot}"
-	],
 	Tests: [
 		{
 			Name: "1. Create Base Pit via Python",
@@ -118,7 +115,4 @@
 			]
 		}
 	],
-	Destruct: [
-		"rm -rf {PitRoot}"
-	]
 }

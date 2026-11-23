@@ -10,6 +10,8 @@ Verifies that:
 
 from __future__ import annotations
 
+from inqaba import InqPath
+
 import tempfile
 from pathlib import Path
 
@@ -17,11 +19,11 @@ from umgodi import Pit, PitItem
 from umgodi.cli import main
 
 
-def test_bound_entity_attribute_assignment_emits_sparse_delta() -> None:
-	with tempfile.TemporaryDirectory() as tmp_dir:
+def test_bound_entity_attribute_assignment_emits_sparse_delta(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp_dir:
 		pit_dir = Path(tmp_dir) / "TestPit"
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			# Base entity with 5 attributes
 			base = PitItem({
 				"Id": "Alice",
@@ -32,7 +34,7 @@ def test_bound_entity_attribute_assignment_emits_sparse_delta() -> None:
 			})
 			pit.add(base)
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			alice = pit["Alice"]
 			assert alice.pit is pit, "Retrieved living entity must be bound to parent Pit!"
 
@@ -64,11 +66,11 @@ def test_bound_entity_attribute_assignment_emits_sparse_delta() -> None:
 			assert living["Status"] == "Active"
 
 
-def test_bound_entity_set_property_emits_sparse_delta() -> None:
-	with tempfile.TemporaryDirectory() as tmp_dir:
+def test_bound_entity_set_property_emits_sparse_delta(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp_dir:
 		pit_dir = Path(tmp_dir) / "TestPit"
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			pit.add(PitItem({
 				"Id": "Alice",
 				"Kind": "Person",
@@ -76,7 +78,7 @@ def test_bound_entity_set_property_emits_sparse_delta() -> None:
 				"City": "Cape Town",
 			}))
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			alice = pit["Alice"]
 			changed = alice.set_property({"UseCase": "PerformLive", "Rating": 5})
 			assert changed is True
@@ -91,18 +93,18 @@ def test_bound_entity_set_property_emits_sparse_delta() -> None:
 			assert "City" not in newest_frag
 
 
-def test_bound_entity_property_tombstone_emits_sparse_delta() -> None:
-	with tempfile.TemporaryDirectory() as tmp_dir:
+def test_bound_entity_property_tombstone_emits_sparse_delta(pit_test_root) -> None:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp_dir:
 		pit_dir = Path(tmp_dir) / "TestPit"
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			pit.add(PitItem({
 				"Id": "Alice",
 				"Kind": "Person",
 				"City": "Cape Town",
 			}))
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			alice = pit["Alice"]
 			alice.delete_property("City")
 
@@ -118,13 +120,13 @@ def test_bound_entity_property_tombstone_emits_sparse_delta() -> None:
 			assert pit["Alice"].get("City") is None
 
 
-def test_cli_set_emits_pure_sparse_delta_no_read_modify_write() -> None:
+def test_cli_set_emits_pure_sparse_delta_no_read_modify_write(pit_test_root) -> None:
 	"""Certifies that 'jpit add' never performs Read-Modify-Write."""
-	with tempfile.TemporaryDirectory() as tmp_dir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp_dir:
 		pit_dir = Path(tmp_dir) / "TestPit"
 
 		# Seed initial entity with Kind, Name, Status, What, Who
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			pit.add(PitItem({
 				"Id": "Loc1",
 				"Kind": "Location",
@@ -140,7 +142,7 @@ def test_cli_set_emits_pure_sparse_delta_no_read_modify_write() -> None:
 		exit_code = main(["add", str(pit_dir), "--source", str(source)])
 		assert exit_code == 0
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			history = pit._historic_items["Loc1"].history
 			assert len(history) == 2, "Expected 2 fragments in history stack!"
 
@@ -168,12 +170,12 @@ def test_cli_set_emits_pure_sparse_delta_no_read_modify_write() -> None:
 			assert projected["Who"] == "RSB"
 
 
-def test_cli_del_prop_emits_pure_sparse_delta() -> None:
+def test_cli_del_prop_emits_pure_sparse_delta(pit_test_root) -> None:
 	"""Certifies that 'jpit delete-property' emits a sparse tombstone without prior properties."""
-	with tempfile.TemporaryDirectory() as tmp_dir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmp_dir:
 		pit_dir = Path(tmp_dir) / "TestPit"
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			pit.add(PitItem({
 				"Id": "Loc1",
 				"Kind": "Location",
@@ -184,7 +186,7 @@ def test_cli_del_prop_emits_pure_sparse_delta() -> None:
 		exit_code = main(["delete-property", str(pit_dir), "Loc1", "What"])
 		assert exit_code == 0
 
-		with Pit.open(pit_dir, unflagged=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir), unflagged=True) as pit:
 			history = pit._historic_items["Loc1"].history
 			assert len(history) == 2
 

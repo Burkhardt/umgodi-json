@@ -8,9 +8,6 @@
 		RootName: "{root}/AIA.ParitySuite.03_Tombstones",
 		PitRoot: "{root}/AIA.ParitySuite.03_Tombstones"
 	},
-	Construct: [
-		"rm -rf {PitRoot}"
-	],
 	Tests: [
 		{
 			Name: "1. Create Entity with Nested Properties via Python",
@@ -172,7 +169,4 @@
 			]
 		}
 	],
-	Destruct: [
-		"rm -rf {PitRoot}"
-	]
 }

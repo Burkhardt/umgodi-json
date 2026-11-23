@@ -8,9 +8,6 @@
 		RootName: "{root}/AIA.ParitySuite.06_Recovery",
 		PitRoot: "{root}/AIA.ParitySuite.06_Recovery"
 	},
-	Construct: [
-		"rm -rf {PitRoot}"
-	],
 	Tests: [
 		{
 			Name: "1. Create Baseline Entity",
@@ -109,7 +106,4 @@
 			]
 		}
 	],
-	Destruct: [
-		"rm -rf {PitRoot}"
-	]
 }

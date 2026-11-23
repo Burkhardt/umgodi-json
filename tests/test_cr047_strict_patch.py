@@ -6,6 +6,8 @@ Exercises 100% lockstep parity with C# pits v4.4.5.
 
 from __future__ import annotations
 
+from inqaba import InqPath
+
 import pytest
 import contextlib
 import io
@@ -27,12 +29,12 @@ from umgodi.cli import build_parser, main
 
 
 @pytest.mark.parametrize("option", ["-x", "--id-exists", "--require-exist", "--require-existing", "--patch"])
-def test_cr047_tc01_patch_existing_entity_succeeds(option: str) -> None:
+def test_cr047_tc01_patch_existing_entity_succeeds(pit_test_root, option: str) -> None:
 	"""TC-01: [{"Id": "Alice", "UseCase": "Live"}] with --require-existing succeeds (exit 0)."""
-	with tempfile.TemporaryDirectory() as tmpdir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		pit_dir = Path(tmpdir)
 		# Seed initial entity
-		with Pit.open(pit_dir / "Activity", read_only=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=False) as pit:
 			pit.add(PitItem({"Id": "Alice", "Kind": "Act", "Name": "Alice Activity"}))
 
 		patch_file = pit_dir / "patch.json"
@@ -47,7 +49,7 @@ def test_cr047_tc01_patch_existing_entity_succeeds(option: str) -> None:
 		assert "1 source items: 1 written, 0 unchanged" in f_out.getvalue()
 
 		# Verify projection has both original and patched attributes
-		with Pit.open(pit_dir / "Activity", read_only=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=True) as pit:
 			alice = pit.get("Alice")
 			assert alice is not None
 			assert alice["Kind"] == "Act"
@@ -55,11 +57,11 @@ def test_cr047_tc01_patch_existing_entity_succeeds(option: str) -> None:
 			assert alice["UseCase"] == "Live"
 
 
-def test_cr047_tc02_missing_id_rejected_before_write() -> None:
+def test_cr047_tc02_missing_id_rejected_before_write(pit_test_root) -> None:
 	"""TC-02: [{"Id": "Ghost99", "UseCase": "Live"}] with --require-existing fails (exit 1)."""
-	with tempfile.TemporaryDirectory() as tmpdir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		pit_dir = Path(tmpdir)
-		with Pit.open(pit_dir / "Activity", read_only=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=False) as pit:
 			pit.add(PitItem({"Id": "Alice", "Kind": "Act"}))
 
 		patch_file = pit_dir / "patch.json"
@@ -76,15 +78,15 @@ def test_cr047_tc02_missing_id_rejected_before_write() -> None:
 		assert "Use without --id-exists / --patch to allow creating new entities." in err
 
 		# Verify Ghost99 was NOT created
-		with Pit.open(pit_dir / "Activity", read_only=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=True) as pit:
 			assert pit.get("Ghost99") is None
 
 
-def test_cr047_tc03_mixed_batch_atomicity() -> None:
+def test_cr047_tc03_mixed_batch_atomicity(pit_test_root) -> None:
 	"""TC-03: Mixed batch [Alice (exists), Ghost99 (missing)] with --patch aborts atomically (exit 1)."""
-	with tempfile.TemporaryDirectory() as tmpdir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		pit_dir = Path(tmpdir)
-		with Pit.open(pit_dir / "Activity", read_only=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=False) as pit:
 			pit.add(PitItem({"Id": "Alice", "Kind": "Act", "Name": "Original"}))
 
 		patch_file = pit_dir / "patch.json"
@@ -103,18 +105,18 @@ def test_cr047_tc03_mixed_batch_atomicity() -> None:
 		assert "error: Entity 'Ghost99' does not exist in Pit 'Activity'." in err
 
 		# Verify ATOMICITY: Alice must NOT have been updated!
-		with Pit.open(pit_dir / "Activity", read_only=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=True) as pit:
 			alice = pit.get("Alice")
 			assert alice is not None
 			assert alice["Name"] == "Original"
 			assert pit.get("Ghost99") is None
 
 
-def test_cr047_tc04_empty_array_rejected_under_patch_flag() -> None:
+def test_cr047_tc04_empty_array_rejected_under_patch_flag(pit_test_root) -> None:
 	"""TC-04: [] under --require-existing fails (exit 1) with exact error string."""
-	with tempfile.TemporaryDirectory() as tmpdir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		pit_dir = Path(tmpdir)
-		with Pit.open(pit_dir / "Activity", read_only=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=False) as pit:
 			pit.add(PitItem({"Id": "Alice", "Kind": "Act"}))
 
 		patch_file = pit_dir / "empty.json"
@@ -130,11 +132,11 @@ def test_cr047_tc04_empty_array_rejected_under_patch_flag() -> None:
 		assert err == "error: Patch source contained 0 entities."
 
 
-def test_cr047_tc05_default_upsert_without_flag_creates_entity() -> None:
+def test_cr047_tc05_default_upsert_without_flag_creates_entity(pit_test_root) -> None:
 	"""TC-05: Missing ID without --require-existing (default upsert) creates entity (exit 0)."""
-	with tempfile.TemporaryDirectory() as tmpdir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		pit_dir = Path(tmpdir)
-		with Pit.open(pit_dir / "Activity", read_only=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=False) as pit:
 			pit.add(PitItem({"Id": "Alice", "Kind": "Act"}))
 
 		seed_file = pit_dir / "seed.json"
@@ -146,17 +148,17 @@ def test_cr047_tc05_default_upsert_without_flag_creates_entity() -> None:
 			code = main(["add", str(pit_dir / "Activity"), "--source", str(seed_file)])
 
 		assert code == 0
-		with Pit.open(pit_dir / "Activity", read_only=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=True) as pit:
 			new_ent = pit.get("NewEntity")
 			assert new_ent is not None
 			assert new_ent["Name"] == "Brand New"
 
 
-def test_cr047_tc06_tombstoned_entity_rejected_under_strict_patch() -> None:
+def test_cr047_tc06_tombstoned_entity_rejected_under_strict_patch(pit_test_root) -> None:
 	"""TC-06: A tombstoned entity (Deleted: true) does not exist in living state and must be rejected."""
-	with tempfile.TemporaryDirectory() as tmpdir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		pit_dir = Path(tmpdir)
-		with Pit.open(pit_dir / "Activity", read_only=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=False) as pit:
 			pit.add(PitItem({"Id": "Bob", "Kind": "Act"}))
 			pit.delete_item("Bob")
 
@@ -172,17 +174,17 @@ def test_cr047_tc06_tombstoned_entity_rejected_under_strict_patch() -> None:
 		assert "error: Entity 'Bob' does not exist in Pit 'Activity'." in f_err.getvalue()
 
 
-def test_cr047_tc07_store_api_seed_from_file_strict_validation() -> None:
+def test_cr047_tc07_store_api_seed_from_file_strict_validation(pit_test_root) -> None:
 	"""Direct Pit.seed_from_file(..., require_existing=True) raises StrictPatchValidationError."""
-	with tempfile.TemporaryDirectory() as tmpdir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		pit_dir = Path(tmpdir)
-		with Pit.open(pit_dir / "Activity", read_only=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=False) as pit:
 			pit.add(PitItem({"Id": "Alice", "Kind": "Act"}))
 
 		bad_patch = pit_dir / "bad.json"
 		bad_patch.write_text(json.dumps([{"Id": "MissingOne", "UseCase": "Test"}]))
 
-		with Pit.open(pit_dir / "Activity", read_only=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=False) as pit:
 			try:
 				pit.seed_from_file(bad_patch, require_existing=True)
 				assert False, "Should have raised StrictPatchValidationError"
@@ -191,7 +193,7 @@ def test_cr047_tc07_store_api_seed_from_file_strict_validation() -> None:
 
 		empty_patch = pit_dir / "empty.json"
 		empty_patch.write_text("[]")
-		with Pit.open(pit_dir / "Activity", read_only=False) as pit:
+		with Pit.open(InqPath.from_directory(pit_dir / "Activity"), read_only=False) as pit:
 			try:
 				pit.seed_from_file(empty_patch, require_existing=True)
 				assert False, "Should have raised StrictPatchValidationError"
@@ -222,7 +224,7 @@ def test_cr047_tc08_cli_version_formatting() -> None:
 	assert f_out2.getvalue().strip() == f"umgodi v{__version__}"
 
 
-def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
+def test_cr047_tc09_cross_engine_parity_with_csharp_pits(pit_test_root) -> None:
 	"""
 	CR047 Cross-Engine Parity:
 	Verifies that C# pits v4.4.5 and Python jpit v4.4.5 behave identically on the same disk storage.
@@ -239,7 +241,7 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 	if res_v.stdout.strip() != f"pits v{__version__}":
 		return
 
-	with tempfile.TemporaryDirectory() as tmpdir:
+	with tempfile.TemporaryDirectory(dir=pit_test_root) as tmpdir:
 		pit_root = Path(tmpdir)
 		pit_path = pit_root / "Parity"
 		seed_file = pit_root / "seed.json"
@@ -270,7 +272,7 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 		assert "[pits] 2 source items: 2 written, 0 unchanged (Pit 'Parity')." in res2.stdout
 
 		# 3. Python jpit verifies projected state
-		with Pit.open(pit_path, read_only=True) as pit:
+		with Pit.open(InqPath.from_directory(pit_path), read_only=True) as pit:
 			adele = pit.get("Agent7010")
 			assert adele is not None
 			assert adele["Name"] == "Adele"

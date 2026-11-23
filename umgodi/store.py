@@ -50,6 +50,7 @@ from .flags import (
 )
 from .fs import (
 	ensure_directory,
+	is_explicit_path,
 	resolve_pit_target,
 	safe_delete_file,
 	safe_read_text,
@@ -257,7 +258,7 @@ class JsonPitBase:
 
 	def __init__(
 		self,
-		pit_dir: InqEntry,
+		pit_dir: InqPath,
 		pit_name: str,
 		subscriber: str | None = None,
 		read_only: bool = False,
@@ -265,6 +266,10 @@ class JsonPitBase:
 		unflagged: bool = False,
 		retain_window: bool = False,
 	) -> None:
+		if not isinstance(pit_dir, InqPath):
+			raise TypeError("pit_dir must be an InqPath directory")
+		if pit_dir.suffix.lower() == ".pit":
+			raise ValueError("pit_dir must be a directory, not a .pit file")
 		self.pit_dir = InqPath.from_directory(pit_dir)
 		self.pit_name = pit_name
 		self.canonical_file = self.pit_dir / f"{pit_name}.pit"
@@ -311,10 +316,19 @@ class JsonPitBase:
 
 	def _load_timing(self):
 		target = self.pit_dir.resolve()
-		roots = [root.resolve() for root in OsConfig.load().clouds.values()]
+		settings = OsConfig.load()
+		roots = [root.resolve() for root in settings.clouds.values()]
 		root = next((root for root in sorted(roots, key=lambda p: len(p.parts), reverse=True)
 			if root in target.parents or root == target), self.pit_dir.parent.parent)
 		path = root / "JsonPit" / "timing.json5"
+		dropbox = settings.get_cloud_root("Dropbox")
+		if not path.is_file() and dropbox is not None and root == dropbox.resolve():
+			onedrive = settings.get_cloud_root("OneDrive")
+			if onedrive is None:
+				raise FileNotFoundError("Dropbox timing.json5 is missing and OneDrive is not configured")
+			path = onedrive / "JsonPit" / "timing.json5"
+			if not path.is_file():
+				raise FileNotFoundError(f"Dropbox timing.json5 is missing and OneDrive timing file is unavailable: {path}")
 		config = loads_json5(path.read_text(encoding="utf-8")) if path.is_file() else {}
 		if not isinstance(config, dict):
 			raise ValueError("Expected a timing configuration object")
@@ -483,7 +497,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 
 	def __init__(
 		self,
-		pit_dir: InqEntry,
+		pit_dir: InqPath,
 		pit_name: str,
 		subscriber: str | None = None,
 		read_only: bool = False,
@@ -757,7 +771,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 	@classmethod
 	def open(
 		cls,
-		name_or_path: str | InqEntry,
+		name_or_path: str | InqPath,
 		cloud: str | None = "OneDrive",
 		root: str | None = None,
 		subscriber: str | None = None,
@@ -770,14 +784,19 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 		tracking_mode: MutationTrackingMode | str | None = None,
 	) -> Pit:
 		"""
-		Opens a Pit directory using the Cloud-First Triad or explicit local path.
+		Opens a Pit using the Cloud-First Triad or an explicit InqPath directory.
 
 		Examples:
 		    with Pit.open("Person", cloud="OneDrive", root="AfricaStage") as pit:
 		        ...
-		    with Pit.open("/path/to/my/Person") as pit:
+		    with Pit.open(InqPath("/path/to/my/Person")) as pit:
 		        ...
 		"""
+		if isinstance(name_or_path, InqPath):
+			if name_or_path.suffix.lower() == ".pit":
+				raise ValueError("Pit.open requires a directory, not a .pit file")
+		elif not isinstance(name_or_path, str) or is_explicit_path(name_or_path) or name_or_path.lower().endswith(".pit"):
+			raise TypeError("Pit.open requires an InqPath directory or a bare cloud Pit name")
 		pit_dir, pit_name = resolve_pit_target(name_or_path, cloud=cloud, root=root)
 		return cls(
 			pit_dir=pit_dir,

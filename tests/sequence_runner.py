@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -22,21 +23,38 @@ from typing import Any
 from umgodi.config import loads_json5, InqConfig
 
 
+def configured_provider():
+	config_path = Path.home() / ".config" / "RAIkeep.json5"
+	active = InqConfig.find_config_file()
+	if not config_path.is_file() or active is None or Path(active).resolve() != config_path.resolve():
+		raise RuntimeError("Sequence suites require the active ~/.config/RAIkeep.json5 and TestCloud")
+	provider = loads_json5(config_path.read_text(encoding="utf-8")).get("TestCloud")
+	if provider != "Dropbox":
+		raise RuntimeError("Sequence suites require Dropbox as the configured TestCloud")
+	return provider
+
+
 def allocate_suite_root(data):
 	"""Allocate owned TestCloud storage before any suite command can execute."""
 	if data.get("Cloud", "test") != "test":
 		raise ValueError("Local sequence suites require Cloud=test")
 	if data.get("Root") not in (None, "TEMP"):
 		raise ValueError("Local sequence roots must be allocated per run")
+	configured_provider()
 	config = InqConfig.load()
-	cloud = config.cloud_root(config.test_cloud) if config.test_cloud else None
-	if cloud is None or not cloud.is_dir():
-		raise RuntimeError("Sequence suites require configured, available TestCloud; no OneDrive fallback")
-	return tempfile.TemporaryDirectory(prefix="RAIkeep.Test.", dir=str(cloud))
+	result = subprocess.run(["amafu", "list", "cloud", "Dropbox"], capture_output=True, text=True, check=True)
+	lines = result.stdout.splitlines()
+	if len(lines) != 1 or not Path(lines[0]).is_absolute():
+		raise RuntimeError("amafu did not return one absolute Dropbox root")
+	cloud = Path(lines[0]).resolve()
+	configured_cloud = config.get_cloud_root("Dropbox")
+	if configured_cloud is None or not cloud.is_dir() or cloud != Path(str(configured_cloud)).resolve():
+		raise RuntimeError("Configured Dropbox TestCloud is unavailable or differs from amafu")
+	return tempfile.TemporaryDirectory(prefix="RAIkeep.Test.", dir=cloud)
 
 
 def suite_variables(data, root):
-	variables = {"root": root, "cloud": InqConfig.load().test_cloud}
+	variables = {"root": root, "cloud": configured_provider()}
 	for key, value in data.get("Variables", {}).items():
 		if key in ("root", "cloud"):
 			raise ValueError(f"Suite cannot override managed {key}")
@@ -44,6 +62,8 @@ def suite_variables(data, root):
 	for key in ("RootName", "PitRoot"):
 		if key in variables and not Path(variables[key]).resolve().is_relative_to(Path(root).resolve()):
 			raise ValueError(f"{key} must stay inside the owned TestCloud run directory")
+		if key in variables and shlex.quote(variables[key]) != variables[key]:
+			raise ValueError(f"{key} contains characters unsafe for sequence shell commands")
 	return variables
 
 
