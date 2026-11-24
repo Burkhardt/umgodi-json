@@ -76,7 +76,7 @@ not against the projected state. A sparse patch matching projected values may
 therefore still append a fragment; distributed ordering and tombstones are preserved.
 
 
-## Latest Version 4.7.1
+## Latest Version 4.7.2
 
 The active Python distributed-persistence implementation is now distributed as
 `umgodi-json`. It uses Inqaba for paths, files, and shared configuration; its
@@ -95,7 +95,7 @@ snapshot is absent. It emits no JSON or success receipt and leaves existing
 export files intact. `--wwwa` requires all four snapshots; a valid existing
 empty snapshot still exports `[]` successfully.
 
-Latest release notes: [coordinated RAIkeep release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/umgodi-json_RELEASE_NOTES_4.x.md#471).
+Latest release notes: [coordinated RAIkeep release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/umgodi-json_RELEASE_NOTES_4.x.md#472).
 
 ## Previous Versions
 
@@ -135,7 +135,7 @@ Python 3.12 or newer is required.
 Install one environment for both commands:
 
 ```bash
-pipx install "umgodi-json==4.7.1"
+pipx install "umgodi-json==4.7.2"
 jpit --version
 umgodi --version
 ```
@@ -146,7 +146,7 @@ To upgrade:
 pipx upgrade umgodi-json
 ```
 
-The expected outputs are `jpit v4.7.1` and `umgodi v4.7.1`. Both commands come from the same distribution.
+The expected outputs are `jpit v4.7.2` and `umgodi v4.7.2`. Both commands come from the same distribution.
 
 On Ubuntu/Debian, install pipx with `sudo apt install pipx` if needed. On macOS,
 use `brew install pipx`. Run `pipx ensurepath` and start a new shell if the commands
@@ -158,7 +158,7 @@ are not on PATH. System Python may reject direct pip installation with
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install "umgodi-json==4.7.1"
+python -m pip install "umgodi-json==4.7.2"
 ```
 
 Use `import umgodi` in Python. Existing `jsonpit` environments can continue using the frozen 4.6.3 release.
