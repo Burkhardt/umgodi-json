@@ -1,8 +1,8 @@
-# Getting Started with Python umgodi-json (v4.7.2)
+# Getting Started with Python umgodi-json (v4.7.3)
 
 This guide provides a practical walkthrough for using **`umgodi`** from Python—either embedded as a library in your services, AI agent frameworks, and data pipelines, or as the standalone **`jpit`** CLI for command-line workflows.
 
-It is based on `umgodi` v4.7.2, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+It is based on `umgodi` v4.7.3, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
 
 ---
 
@@ -28,16 +28,16 @@ It is based on `umgodi` v4.7.2, featuring 100% lockstep parity with C# `JsonPit`
 For the CLI, install one pipx environment that supplies both commands:
 
 ```bash
-pipx install "umgodi-json==4.7.2"
+pipx install "umgodi-json==4.7.3"
 # For an existing environment:
 pipx upgrade umgodi-json
 jpit --version
 umgodi --version
 ```
 
-The outputs are `jpit v4.7.2` and `umgodi v4.7.2`. If a separate `jpit` pipx
+The outputs are `jpit v4.7.3` and `umgodi v4.7.3`. If a separate `jpit` pipx
 environment already exists, run `pipx uninstall jpit`, followed by
-`pipx install --force "umgodi-json==4.7.2"` to restore both command links.
+`pipx install --force "umgodi-json==4.7.3"` to restore both command links.
 
 Ubuntu/Debian and Homebrew may reject system-wide pip installs as externally
 managed. Use pipx for the CLI, or an isolated virtual environment for library use:
@@ -45,7 +45,7 @@ managed. Use pipx for the CLI, or an isolated virtual environment for library us
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install "umgodi-json==4.7.2"
+python -m pip install "umgodi-json==4.7.3"
 ```
 
 ---
@@ -278,3 +278,18 @@ If your shell reports `command not found: jpit`, ensure that `~/.local/bin` is i
 echo 'export PATH="$HOME/.local/bin:$HOME/.dotnet/tools:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
+
+### Running the tests from the RAIkeep checkout
+
+Use the release virtual environment for both dependency installation and pytest.
+From the umbrella directory, run:
+
+```zsh
+.release-venv/bin/python -m pip install -e './umgodi-json[dev]'
+.release-venv/bin/python -m pytest umgodi-json/tests -n 4 --durations=20 -rs
+```
+
+Four workers are the default for Umgodi, including during release validation. They run independent tests concurrently. Dropbox-backed tests use the
+configured test drive and its calibrated ticket windows. Compare the final
+pass and skip counts as well as the elapsed time. For a sequential comparison,
+replace `-n 4` with `-n 0`.
